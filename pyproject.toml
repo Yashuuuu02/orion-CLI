@@ -13,4 +13,8 @@ dependencies = [
 ]
 
 [project.scripts]
-orion = "orion.cli.app:main"
+"summon-orion" = "orion.cli.app:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["orion*"]
