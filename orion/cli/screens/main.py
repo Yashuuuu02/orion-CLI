@@ -32,6 +32,7 @@ class MainScreen(Screen):
         ("ctrl+b", "toggle_sidebar",  "Toggle Sidebar"),
         ("ctrl+l", "clear_chat",      "Clear Chat"),
         ("ctrl+h", "session_history", "History"),
+        ("ctrl+question_mark", "help", "Help"),
     ]
 
     def compose(self) -> ComposeResult:
@@ -62,6 +63,7 @@ class MainScreen(Screen):
         chat = self.query_one("#chat", ChatPanel)
         chat.add_message("user", text)
         self.app.session_manager.add_message(self.session["id"], "user", text)
+        self._update_status()
         chat.add_thinking()
         self.set_timer(0.5, self._placeholder_reply)
 
@@ -106,4 +108,27 @@ class MainScreen(Screen):
 
     def action_session_history(self):
         from orion.cli.screens.history import HistoryScreen
-        self.app.push_screen(HistoryScreen())
+        self.app.push_screen(HistoryScreen(), self._switch_to_session)
+
+    def _switch_to_session(self, session_id: str | None):
+        if not session_id:
+            return
+            
+        sessions = self.app.session_manager.get_all_sessions()
+        for s in sessions:
+            if s["id"] == session_id:
+                self.session = s
+                break
+                
+        chat = self.query_one("#chat", ChatPanel)
+        chat.clear()
+        
+        for msg in self.app.session_manager.get_messages(self.session["id"]):
+            chat.add_message(msg["role"], msg["content"])
+            
+        self._update_header()
+        self._update_status()
+
+    def action_help(self):
+        from orion.cli.screens.help import HelpScreen
+        self.app.push_screen(HelpScreen())
