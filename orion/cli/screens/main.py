@@ -4,7 +4,7 @@ from textual.screen import Screen
 from textual.app import ComposeResult
 from textual.widgets import Static, Input
 from textual.containers import Horizontal
-from orion.cli.widgets.file_tree import OrionFileTree
+from orion.cli.widgets.info_panel import InfoPanel
 from orion.cli.widgets.chat_panel import ChatPanel
 from orion.cli.widgets.input_bar import InputBar
 
@@ -20,7 +20,7 @@ PLACEHOLDER_REPLIES = [
 class MainScreen(Screen):
     DEFAULT_CSS = """
     #header   { dock: top; height: 1; background: $accent; color: $text; padding: 0 1; }
-    #sidebar  { width: 25%; height: 100%; border-right: solid $accent; }
+    #sidebar  { width: 22%; height: 100%; border-right: solid $accent; }
     #chat     { width: 1fr; height: 1fr; }
     #input-bar { dock: bottom; height: auto; }
     #status   { dock: bottom; height: 1; background: $surface; padding: 0 1; }
@@ -38,7 +38,7 @@ class MainScreen(Screen):
     def compose(self) -> ComposeResult:
         yield Static("", id="header")
         with Horizontal():
-            yield OrionFileTree(path=os.getcwd(), id="sidebar", classes="hidden")
+            yield InfoPanel(id="sidebar", classes="hidden")
             yield ChatPanel(id="chat")
         yield InputBar(id="input-bar")
         yield Static("", id="status")
@@ -50,6 +50,18 @@ class MainScreen(Screen):
         )
         self._update_header()
         self._update_status()
+
+        self._total_prompt = 0
+        self._total_completion = 0
+
+        panel = self.query_one("#sidebar", InfoPanel)
+        panel.update_model(
+            self.app.config.default_model.split("/")[-2]
+                if "/" in self.app.config.default_model else "fast",
+            self.app.config.default_model
+        )
+        panel.update_session(self.session['name'], self.session['cwd'])
+
         self.call_after_refresh(self._load_initial_messages)
         self.query_one(InputBar).focus()
         
@@ -87,6 +99,12 @@ class MainScreen(Screen):
         )
         self._update_status()
         
+        # Simulate token usage for Phase 1
+        panel = self.query_one("#sidebar", InfoPanel)
+        self._total_prompt += random.randint(50, 200)
+        self._total_completion += random.randint(30, 150)
+        panel.update_tokens(self._total_prompt, self._total_completion)
+        
         self._thinking = False
         input_bar = self.query_one(InputBar)
         input_bar.disabled = False
@@ -123,6 +141,12 @@ class MainScreen(Screen):
         chat.add_message("system", "New session")
         self._update_header()
         self._update_status()
+        
+        self._total_prompt = 0
+        self._total_completion = 0
+        panel = self.query_one("#sidebar", InfoPanel)
+        panel.update_tokens(0, 0)
+        panel.update_session(self.session['name'], self.session['cwd'])
 
     def action_session_history(self):
         from orion.cli.screens.history import HistoryScreen
