@@ -11,20 +11,21 @@ from rich.syntax import Syntax
 from datetime import datetime
 
 class ChatMessage(Static):
-    def __init__(self, role: str, content: str | Group, timestamp: str, **kwargs):
+    def __init__(self, role: str, content: str | Group, model: str = "", time_taken: float = 0.0, status: str = "", **kwargs):
         super().__init__(**kwargs)
         self.role = role
         self.content = content
-        self.timestamp = timestamp
+        self.model = model
+        self.time_taken = time_taken
+        self.status = status
         self.add_class(f"msg-{role}")
 
     def render(self):
         if self.role == "user":
-            return Group(Text(f"You  {self.timestamp}", style="bold cyan"), self.content)
+            return self.content
         elif self.role == "assistant":
-            header = Text(" Orion ", style="bold #FF8C00") # Brand Orange
-            header.append(f" {self.timestamp}", style="dim")
-            return Group(header, self.content)
+            footer = Text(f"\n▣ Build · {self.model} · {self.time_taken}s · {self.status}", style="dim")
+            return Group(self.content, footer)
         elif self.role == "system":
             return Text(f"── {self.content} ──", style="dim italic", justify="center")
         return self.content
@@ -35,7 +36,7 @@ class ThinkingMessage(Static):
         self.add_class("msg-thinking")
         
     def render(self):
-        return Text("Thinking: [C01] Analyzing prompt...", style="dim italic")
+        return Text.assemble(("Thinking: ", "italic #B8860B"), ("Analyzing prompt and constructing pipeline strategy...", "dim"))
 
 class ChatPanel(Widget):
     DEFAULT_CSS = """
@@ -55,13 +56,16 @@ class ChatPanel(Widget):
     }
     .msg-user {
         border-left: tall $accent;
-        background: $surface;
+        background: $surface-lighten-1;
+        padding: 0 1;
+        margin: 1 0;
     }
     .msg-assistant {
         padding: 0 1;
         margin: 1 0;
     }
     .msg-thinking {
+        border-left: tall #2e2e2e;
         padding: 0 1;
         margin: 1 0;
     }
@@ -87,11 +91,9 @@ class ChatPanel(Widget):
                     renderables.append(Text.from_markup(part.strip()))
         return Group(*renderables)
 
-    def add_message(self, role: str, content: str):
+    def add_message(self, role: str, content: str, model: str = "orion/base", time_taken: float = 0.5, status: str = "completed"):
         self.remove_thinking()
         scroll = self.query_one("#chat-scroll", VerticalScroll)
-        
-        timestamp = datetime.now().strftime("%H:%M")
         
         if role == "assistant":
             renderable = self._render_code_blocks(content)
@@ -100,7 +102,7 @@ class ChatPanel(Widget):
         else:
             renderable = Text(content)
             
-        msg = ChatMessage(role=role, content=renderable, timestamp=timestamp)
+        msg = ChatMessage(role=role, content=renderable, model=model, time_taken=time_taken, status=status)
         scroll.mount(msg)
         scroll.scroll_end(animate=False)
 

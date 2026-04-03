@@ -100,7 +100,8 @@ class MainScreen(Screen):
     def _placeholder_reply(self):
         reply = random.choice(PLACEHOLDER_REPLIES)
         chat = self.query_one("#chat", ChatPanel)
-        chat.add_message("assistant", reply)
+        active_model = self.app.config.default_model
+        chat.add_message("assistant", reply, model=active_model, time_taken=0.5, status="completed")
         self.app.session_manager.add_message(
             self.session["id"], "assistant", reply
         )
