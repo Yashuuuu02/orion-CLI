@@ -8,9 +8,7 @@ from orion.cli.screens.setup import SetupScreen
 class OrionApp(App):
     TITLE = "Orion CLI"
     CSS = """
-    Screen {
-        $accent: #8B1A1A;
-    }
+    $accent: #8B1A1A;
     """
 
     def on_mount(self):
