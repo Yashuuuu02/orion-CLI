@@ -55,7 +55,6 @@ class InfoPanel(Static):
     #lsp-status {
         color: #666666;
         text-style: italic;
-        font-size: 90%;
     }
     """
     
