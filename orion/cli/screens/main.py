@@ -19,11 +19,15 @@ PLACEHOLDER_REPLIES = [
 
 class MainScreen(Screen):
     DEFAULT_CSS = """
-    #header   { dock: top; height: 1; background: $accent; color: $text; padding: 0 1; }
-    #sidebar  { width: 22%; height: 100%; border-right: solid $accent; }
+    #header   { dock: top; height: 1; background: $accent; color: $text; padding: 0 1; display: none; }
+    #sidebar  { width: 22%; height: 100%; border-right: solid #2e2e2e; }
     #chat     { width: 1fr; height: 1fr; }
-    #input-bar { dock: bottom; height: auto; }
-    #status   { dock: bottom; height: 1; background: $surface; padding: 0 1; }
+    #input-bar { dock: bottom; height: auto; border-top: solid #2e2e2e; }
+    #footer   { dock: bottom; height: 1; background: #1a1a1a; padding: 0 1; layout: horizontal; }
+    #status-left { width: 1fr; content-align: left middle; color: $text; }
+    #status-center { width: 1fr; content-align: center middle; color: $text-muted; }
+    #status-right { width: 1fr; content-align: right middle; color: $text; }
+    .ready-dot { color: #4CAF50; }
     """
 
     BINDINGS = [
@@ -41,7 +45,10 @@ class MainScreen(Screen):
             yield InfoPanel(id="sidebar", classes="hidden")
             yield ChatPanel(id="chat")
         yield InputBar(id="input-bar")
-        yield Static("", id="status")
+        with Horizontal(id="footer"):
+            yield Static("📂 ...", id="status-left")
+            yield Static("^P commands · ^C stop · ^L clear", id="status-center")
+            yield Static("[#4CAF50]●[/] Ready · v1.3.13", id="status-right")
 
     def on_mount(self):
         self.session = (
@@ -118,12 +125,21 @@ class MainScreen(Screen):
         )
 
     def _update_status(self):
-        count = len(
-            self.app.session_manager.get_messages(self.session["id"])
-        )
-        self.query_one("#status", Static).update(
-            f" Session: {self.session['name']}  |  Messages: {count}  |  Ctrl+? for help"
-        )
+        # Update git status path
+        cwd = os.getcwd()
+        branch = "main"
+        try:
+            head_path = os.path.join(cwd, ".git", "HEAD")
+            if os.path.exists(head_path):
+                with open(head_path, "r") as f:
+                    content = f.read().strip()
+                if content.startswith("ref: refs/heads/"):
+                    branch = content.replace("ref: refs/heads/", "")
+        except:
+            pass
+            
+        repo_name = os.path.basename(cwd)
+        self.query_one("#status-left", Static).update(f"📂 {repo_name} · 🌿 {branch}")
 
     def action_quit(self):
         self.app.exit()

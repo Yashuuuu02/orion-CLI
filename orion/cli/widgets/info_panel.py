@@ -10,55 +10,47 @@ class InfoPanel(Widget):
         width: 100%;
         height: 100%;
         background: $surface;
-        border-right: solid $primary-darken-2;
+        border-right: solid #2e2e2e;
         padding: 1 2;
         overflow-y: auto;
     }
     InfoPanel .section-title {
-        color: $primary;
-        text-style: bold;
-        margin-bottom: 1;
+        color: $text-muted;
+        text-style: italic;
+        margin-bottom: 0;
         margin-top: 1;
     }
     InfoPanel .value {
         color: $text;
-    }
-    InfoPanel .dim-value {
-        color: $text-muted;
-    }
-    InfoPanel .divider {
-        color: $primary-darken-2;
+        text-style: bold;
+        content-align: right middle;
+        width: 100%;
     }
     """
 
     def compose(self) -> ComposeResult:
         yield Vertical(
             Static("⚡ ORION CLI", classes="section-title"),
-            Static("─" * 20, classes="divider"),
 
-            Static("\nMODEL", classes="section-title"),
-            Static("", id="info-tier"),
-            Static("", id="info-model"),
+            Static("MODEL", classes="section-title"),
+            Static("", id="info-tier", classes="value"),
+            Static("", id="info-model", classes="value"),
 
-            Static("\nTOKENS", classes="section-title"),
-            Static("─" * 20, classes="divider"),
-            Static("Prompt:      0", id="info-prompt-tokens"),
-            Static("Completion:  0", id="info-completion-tokens"),
-            Static("Total:       0", id="info-total-tokens"),
+            Static("TOKENS", classes="section-title"),
+            Static("Prompt:      0", id="info-prompt-tokens", classes="value"),
+            Static("Completion:  0", id="info-completion-tokens", classes="value"),
+            Static("Total:       0", id="info-total-tokens", classes="value"),
 
-            Static("\nCOST (est.)", classes="section-title"),
-            Static("─" * 20, classes="divider"),
-            Static("$0.000000", id="info-cost"),
+            Static("COST (est.)", classes="section-title"),
+            Static("$0.000000", id="info-cost", classes="value"),
 
-            Static("\nSESSION", classes="section-title"),
-            Static("─" * 20, classes="divider"),
-            Static("", id="info-session-name"),
-            Static("", id="info-cwd"),
+            Static("SESSION", classes="section-title"),
+            Static("", id="info-session-name", classes="value"),
+            Static("", id="info-cwd", classes="value"),
 
-            Static("\nPIPELINE", classes="section-title"),
-            Static("─" * 20, classes="divider"),
-            Static("IISG Rate:  --", id="info-iisg"),
-            Static("RL Action:  --", id="info-rl-action"),
+            Static("PIPELINE", classes="section-title"),
+            Static("IISG Rate:  --", id="info-iisg", classes="value"),
+            Static("RL Action:  --", id="info-rl-action", classes="value"),
         )
 
     def update_model(self, tier: str, model: str):

@@ -1,15 +1,41 @@
 from textual.widget import Widget
-from textual.widgets import RichLog, Static
+from textual.widgets import Static
 from textual.app import ComposeResult
 from textual.reactive import reactive
-from textual.containers import Vertical
+from textual.containers import VerticalScroll
 
 from rich.panel import Panel
 from rich.text import Text
 from rich.console import Group
-from rich.table import Table
 from rich.syntax import Syntax
 from datetime import datetime
+
+class ChatMessage(Static):
+    def __init__(self, role: str, content: str | Group, timestamp: str, **kwargs):
+        super().__init__(**kwargs)
+        self.role = role
+        self.content = content
+        self.timestamp = timestamp
+        self.add_class(f"msg-{role}")
+
+    def render(self):
+        if self.role == "user":
+            return Group(Text(f"You  {self.timestamp}", style="bold cyan"), self.content)
+        elif self.role == "assistant":
+            header = Text(" Orion ", style="bold #FF8C00") # Brand Orange
+            header.append(f" {self.timestamp}", style="dim")
+            return Group(header, self.content)
+        elif self.role == "system":
+            return Text(f"── {self.content} ──", style="dim italic", justify="center")
+        return self.content
+
+class ThinkingMessage(Static):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.add_class("msg-thinking")
+        
+    def render(self):
+        return Text("Thinking: [C01] Analyzing prompt...", style="dim italic")
 
 class ChatPanel(Widget):
     DEFAULT_CSS = """
@@ -17,16 +43,27 @@ class ChatPanel(Widget):
         height: 1fr;
         layout: vertical;
     }
-    RichLog {
+    #chat-scroll {
         height: 1fr;
         overflow-y: auto;
     }
-    #thinking-indicator {
-        height: 1;
-        dock: bottom;
-        display: none;
-        color: $text-muted;
-        margin-left: 1;
+    ChatMessage {
+        width: 100%;
+        height: auto;
+        padding: 0 1;
+        margin: 1 0;
+    }
+    .msg-user {
+        border-left: tall $accent;
+        background: $surface;
+    }
+    .msg-assistant {
+        padding: 0 1;
+        margin: 1 0;
+    }
+    .msg-thinking {
+        padding: 0 1;
+        margin: 1 0;
     }
     """
 
@@ -34,9 +71,7 @@ class ChatPanel(Widget):
     _thinking_text = " Orion  "
 
     def compose(self) -> ComposeResult:
-        with Vertical():
-            yield RichLog(highlight=True, markup=True, wrap=True, id="rich-log")
-            yield Static("", id="thinking-indicator")
+        yield VerticalScroll(id="chat-scroll")
 
     def _render_code_blocks(self, content: str) -> Group:
         parts = content.split("```")
@@ -54,65 +89,33 @@ class ChatPanel(Widget):
 
     def add_message(self, role: str, content: str):
         self.remove_thinking()
-        log = self.query_one("#rich-log", RichLog)
+        scroll = self.query_one("#chat-scroll", VerticalScroll)
         
         timestamp = datetime.now().strftime("%H:%M")
         
-        if role == "user":
-            user_content = Group(Text(content))
-            panel = Panel(
-                user_content,
-                title="[bold cyan]You[/]",
-                title_align="left",
-                subtitle=f"[dim]{timestamp}[/dim]",
-                subtitle_align="right",
-                border_style="dodger_blue1",
-                style="on #0f172a", # dark blue/slate
-                expand=False
-            )
-            
-            table = Table.grid(expand=True)
-            table.add_column(ratio=1)
-            table.add_column(justify="right")
-            table.add_row("", panel)
-            
-            log.write(table)
-            
-        elif role == "assistant":
-            header = Text(" Orion  ", style="dim")
-            header.append(timestamp, style="dim")
-            content_renderable = self._render_code_blocks(content)
-            log.write(Group(header, content_renderable))
-            
+        if role == "assistant":
+            renderable = self._render_code_blocks(content)
         elif role == "system":
-            sys_panel = Text(f"── {content} ──", style="dim italic", justify="center")
-            log.write(sys_panel)
-            
+            renderable = content
         else:
-            log.write(Text(content, style="dim"))
+            renderable = Text(content)
             
-        log.write(Text("")) # Blank line divider
+        msg = ChatMessage(role=role, content=renderable, timestamp=timestamp)
+        scroll.mount(msg)
+        scroll.scroll_end(animate=False)
 
     def add_thinking(self):
-        indicator = self.query_one("#thinking-indicator", Static)
-        indicator.display = True
-        self._thinking_dots = 0
-        indicator.update(self._thinking_text)
-        if hasattr(self, "_thinking_timer"):
-            self._thinking_timer.stop()
-        self._thinking_timer = self.set_interval(0.4, self._update_thinking)
-
-    def _update_thinking(self):
-        self._thinking_dots = (self._thinking_dots + 1) % 4
-        dots = "·" * self._thinking_dots
-        self.query_one("#thinking-indicator", Static).update(f"{self._thinking_text}{dots}")
+        self.remove_thinking()
+        scroll = self.query_one("#chat-scroll", VerticalScroll)
+        self._thinking_widget = ThinkingMessage(id="thinking-block")
+        scroll.mount(self._thinking_widget)
+        scroll.scroll_end(animate=False)
 
     def remove_thinking(self):
-        if hasattr(self, "_thinking_timer"):
-            self._thinking_timer.stop()
-            del self._thinking_timer
-        self.query_one("#thinking-indicator", Static).display = False
+        if hasattr(self, "_thinking_widget") and self._thinking_widget is not None:
+            self._thinking_widget.remove()
+            self._thinking_widget = None
 
     def clear(self):
-        self.query_one("#rich-log", RichLog).clear()
+        self.query_one("#chat-scroll", VerticalScroll).query(ChatMessage).remove()
         self.remove_thinking()
