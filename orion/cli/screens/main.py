@@ -50,16 +50,27 @@ class MainScreen(Screen):
         )
         self._update_header()
         self._update_status()
+        self.call_after_refresh(self._load_initial_messages)
+        self.query_one(InputBar).focus()
+        
+    def _load_initial_messages(self):
         for msg in self.app.session_manager.get_messages(self.session["id"]):
             self.query_one("#chat", ChatPanel).add_message(
                 msg["role"], msg["content"]
             )
-        self.query_one(InputBar).focus()
 
     def on_input_bar_submitted(self, event: InputBar.Submitted):
-        text = event.text.strip()
+        self._handle_user_message(event.text)
+
+    def _handle_user_message(self, text: str):
+        text = text.strip()
         if not text:
             return
+            
+        self._thinking = True
+        input_bar = self.query_one(InputBar)
+        input_bar.disabled = True
+        
         chat = self.query_one("#chat", ChatPanel)
         chat.add_message("user", text)
         self.app.session_manager.add_message(self.session["id"], "user", text)
@@ -75,6 +86,11 @@ class MainScreen(Screen):
             self.session["id"], "assistant", reply
         )
         self._update_status()
+        
+        self._thinking = False
+        input_bar = self.query_one(InputBar)
+        input_bar.disabled = False
+        input_bar.focus()
 
     def _update_header(self):
         name = self.session["name"]
@@ -102,7 +118,9 @@ class MainScreen(Screen):
 
     def action_new_session(self):
         self.session = self.app.session_manager.create_session(os.getcwd())
-        self.query_one("#chat", ChatPanel).clear()
+        chat = self.query_one("#chat", ChatPanel)
+        chat.clear()
+        chat.add_message("system", "New session")
         self._update_header()
         self._update_status()
 
