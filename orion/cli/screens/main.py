@@ -38,7 +38,7 @@ class MainScreen(Screen):
     def compose(self) -> ComposeResult:
         yield Static("", id="header")
         with Horizontal():
-            yield OrionFileTree(path=os.getcwd(), id="sidebar")
+            yield OrionFileTree(path=os.getcwd(), id="sidebar", classes="hidden")
             yield ChatPanel(id="chat")
         yield InputBar(id="input-bar")
         yield Static("", id="status")
