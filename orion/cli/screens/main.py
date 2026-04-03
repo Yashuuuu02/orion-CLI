@@ -39,6 +39,10 @@ class MainScreen(Screen):
         ("ctrl+question_mark", "help", "Help"),
     ]
 
+    def __init__(self, initial_message: str = "", **kwargs):
+        super().__init__(**kwargs)
+        self._initial_message = initial_message
+
     def compose(self) -> ComposeResult:
         yield Static("", id="header")
         with Horizontal():
@@ -78,6 +82,8 @@ class MainScreen(Screen):
             self.query_one("#chat", ChatPanel).add_message(
                 msg["role"], msg["content"]
             )
+        if self._initial_message:
+            self._handle_user_message(self._initial_message)
 
     def on_input_bar_submitted(self, event: InputBar.Submitted):
         self._handle_user_message(event.text)

@@ -1,7 +1,7 @@
 from textual.app import App
 from orion.config.config import Config
 from orion.session.session import SessionManager
-from orion.cli.screens.main import MainScreen
+from orion.cli.screens.splash import SplashScreen
 from orion.cli.screens.setup import SetupScreen
 
 
@@ -17,7 +17,7 @@ class OrionApp(App):
         if not self.config.is_configured:
             self.push_screen(SetupScreen())
         else:
-            self.push_screen(MainScreen())
+            self.push_screen(SplashScreen())
 
 
 def main():
