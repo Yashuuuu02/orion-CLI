@@ -21,10 +21,11 @@ class InputBar(Widget):
     DEFAULT_CSS = """
     InputBar {
         height: auto;
-        min-height: 4;
+        min-height: 5;
         max-height: 8;
         dock: bottom;
-        background: transparent;
+        border-top: solid $primary;
+        background: $surface;
         padding: 0 1;
     }
 
@@ -39,23 +40,22 @@ class InputBar(Widget):
         height: auto;
         min-height: 3;
         max-height: 6;
-        background: transparent;
-        border: none;
+        background: $surface-darken-1;
+        border: tall $primary-darken-2;
         color: $text;
         padding: 0 1;
     }
 
     #input-area:focus {
-        border: none;
+        border: tall $primary;
     }
 
     #char-count {
-        dock: right;
-        content-align: right middle;
+        width: 14;
+        height: 3;
+        content-align: center middle;
         color: $text-muted;
-        text-style: dim;
-        margin-right: 14;
-        margin-top: 1;
+        padding: 0 1;
     }
 
     #char-count.over-limit {
@@ -63,19 +63,17 @@ class InputBar(Widget):
     }
 
     #send-btn {
-        width: 12;
+        width: auto;
         min-width: 12;
         height: 3;
         margin-left: 1;
-        background: $accent;
+        background: $primary-darken-1;
         color: $text;
-        text-style: bold;
         border: none;
-        content-align: center middle;
     }
 
     #send-btn:hover {
-        background: $accent-lighten-1;
+        background: $primary;
     }
 
     #send-btn:disabled {
@@ -95,7 +93,7 @@ class InputBar(Widget):
             ta = ChatInputArea(id="input-area")
             yield ta
             yield Static("chars: 0/4000", id="char-count")
-            yield Button("[ ↵ SEND ]", id="send-btn", variant="primary")
+            yield Button(" Send", id="send-btn", variant="primary")
 
     def on_chat_input_area_submit_triggered(self, event: ChatInputArea.SubmitTriggered):
         self._submit()
