@@ -1,14 +1,29 @@
 from textual.app import App
+from orion.config.config import Config
+from orion.session.session import SessionManager
+from orion.cli.screens.main import MainScreen
+from orion.cli.screens.setup import SetupScreen
 
 
 class OrionApp(App):
-    """Orion TUI application."""
+    TITLE = "Orion CLI"
+    CSS = """
+    Screen {
+        $accent: #8B1A1A;
+    }
+    """
 
-    TITLE = "Orion"
+    def on_mount(self):
+        self.config = Config.load()
+        self.session_manager = SessionManager()
+        if not self.config.is_configured:
+            self.push_screen(SetupScreen())
+        else:
+            self.push_screen(MainScreen())
 
 
 def main():
-    print("Orion starting...")
+    OrionApp().run()
 
 
 if __name__ == "__main__":
