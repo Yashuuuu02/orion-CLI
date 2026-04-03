@@ -3,7 +3,7 @@ import random
 from textual.screen import Screen
 from textual.app import ComposeResult
 from textual.widgets import Static, Input
-from textual.containers import Horizontal
+from textual.containers import Horizontal, Vertical
 from orion.cli.widgets.info_panel import InfoPanel
 from orion.cli.widgets.chat_panel import ChatPanel
 from orion.cli.widgets.input_bar import InputBar
@@ -20,14 +20,14 @@ PLACEHOLDER_REPLIES = [
 class MainScreen(Screen):
     DEFAULT_CSS = """
     #header   { dock: top; height: 1; background: $accent; color: $text; padding: 0 1; display: none; }
-    #sidebar  { width: 22%; height: 100%; border-left: solid #2e2e2e; }
-    #chat     { width: 1fr; height: 1fr; }
-    #input-bar { dock: bottom; height: auto; border-top: solid #2e2e2e; }
+    #sidebar  { width: 32; height: 100%; border-left: solid #2e2e2e; }
+    #chat-column { width: 1fr; height: 1fr; layout: vertical; }
+    #chat     { height: 1fr; }
+    #input-bar { border-top: solid #2e2e2e; }
     #footer   { dock: bottom; height: 1; background: #1a1a1a; padding: 0 1; layout: horizontal; }
     #status-left { width: 1fr; content-align: left middle; color: $text; }
     #status-center { width: 1fr; content-align: center middle; color: $text-muted; }
     #status-right { width: 1fr; content-align: right middle; color: $text; }
-    .ready-dot { color: #4CAF50; }
     """
 
     BINDINGS = [
@@ -42,9 +42,10 @@ class MainScreen(Screen):
     def compose(self) -> ComposeResult:
         yield Static("", id="header")
         with Horizontal():
-            yield ChatPanel(id="chat")
+            with Vertical(id="chat-column"):
+                yield ChatPanel(id="chat")
+                yield InputBar(id="input-bar")
             yield InfoPanel(id="sidebar", classes="hidden")
-        yield InputBar(id="input-bar")
         with Horizontal(id="footer"):
             yield Static("📂 ...", id="status-left")
             yield Static("^P commands · ^C stop · ^L clear", id="status-center")

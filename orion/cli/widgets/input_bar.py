@@ -23,8 +23,6 @@ class InputBar(Widget):
         height: auto;
         min-height: 4;
         max-height: 8;
-        dock: bottom;
-        border-top: solid #2e2e2e;
         padding: 0 1;
     }
 
