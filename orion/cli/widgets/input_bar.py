@@ -24,13 +24,13 @@ class InputBar(Widget):
         height: auto;
         min-height: 5;
         max-height: 9;
-        padding: 0 1 1 1;
+        padding: 0 0;
     }
 
     .input-wrapper {
         border-left: tall $accent;
-        background: $surface-lighten-1;
-        padding: 0 1;
+        background: $surface;
+        padding: 1 1 1 1;
         height: auto;
         min-height: 4;
     }
