@@ -20,7 +20,7 @@ PLACEHOLDER_REPLIES = [
 class MainScreen(Screen):
     DEFAULT_CSS = """
     #header   { dock: top; height: 1; background: $accent; color: $text; padding: 0 1; display: none; }
-    #sidebar  { width: 22%; height: 100%; border-right: solid #2e2e2e; }
+    #sidebar  { width: 22%; height: 100%; border-left: solid #2e2e2e; }
     #chat     { width: 1fr; height: 1fr; }
     #input-bar { dock: bottom; height: auto; border-top: solid #2e2e2e; }
     #footer   { dock: bottom; height: 1; background: #1a1a1a; padding: 0 1; layout: horizontal; }
@@ -42,8 +42,8 @@ class MainScreen(Screen):
     def compose(self) -> ComposeResult:
         yield Static("", id="header")
         with Horizontal():
-            yield InfoPanel(id="sidebar", classes="hidden")
             yield ChatPanel(id="chat")
+            yield InfoPanel(id="sidebar", classes="hidden")
         yield InputBar(id="input-bar")
         with Horizontal(id="footer"):
             yield Static("📂 ...", id="status-left")

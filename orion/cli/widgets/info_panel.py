@@ -10,7 +10,7 @@ class InfoPanel(Widget):
         width: 100%;
         height: 100%;
         background: $surface;
-        border-right: solid #2e2e2e;
+        border-left: solid #2e2e2e;
         padding: 1 2;
         overflow-y: auto;
     }
