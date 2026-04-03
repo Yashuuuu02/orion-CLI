@@ -21,40 +21,64 @@ class InputBar(Widget):
     DEFAULT_CSS = """
     InputBar {
         height: auto;
-        min-height: 3;
-        max-height: 6;
-        layout: horizontal;
+        min-height: 5;
+        max-height: 8;
         dock: bottom;
-        border-top: solid $accent;
+        border-top: solid $primary;
+        background: $surface;
         padding: 0 1;
-        align: left middle;
     }
-    
-    ChatInputArea {
+
+    InputBar Horizontal {
+        height: auto;
+        align: left middle;
+        padding: 1 0;
+    }
+
+    #input-area {
         width: 1fr;
         height: auto;
-        min-height: 1;
-        border: none;
-        background: transparent;
+        min-height: 3;
+        max-height: 6;
+        background: $surface-darken-1;
+        border: tall $primary-darken-2;
+        color: $text;
+        padding: 0 1;
     }
-    
+
+    #input-area:focus {
+        border: tall $primary;
+    }
+
     #char-count {
         width: 14;
+        height: 3;
         content-align: center middle;
         color: $text-muted;
-        margin: 1 1;
+        padding: 0 1;
     }
-    
-    #char-count.warning {
+
+    #char-count.over-limit {
         color: $error;
     }
-    
-    Button {
+
+    #send-btn {
         width: auto;
-        min-width: 10;
+        min-width: 12;
+        height: 3;
         margin-left: 1;
-        margin-top: 1;
-        height: 1;
+        background: $primary-darken-1;
+        color: $text;
+        border: none;
+    }
+
+    #send-btn:hover {
+        background: $primary;
+    }
+
+    #send-btn:disabled {
+        background: $surface-darken-2;
+        color: $text-muted;
     }
     """
 
@@ -64,10 +88,12 @@ class InputBar(Widget):
             self.text = text
 
     def compose(self) -> ComposeResult:
-        ta = ChatInputArea(id="message-input")
-        yield ta
-        yield Static("chars: 0/4000", id="char-count")
-        yield Button(" Send", id="send-btn", variant="primary")
+        from textual.containers import Horizontal
+        with Horizontal():
+            ta = ChatInputArea(id="input-area")
+            yield ta
+            yield Static("chars: 0/4000", id="char-count")
+            yield Button(" Send", id="send-btn", variant="primary")
 
     def on_chat_input_area_submit_triggered(self, event: ChatInputArea.SubmitTriggered):
         self._submit()
@@ -77,9 +103,9 @@ class InputBar(Widget):
         counter = self.query_one("#char-count", Static)
         counter.update(f"chars: {count}/4000")
         if count > 3800:
-            counter.add_class("warning")
+            counter.add_class("over-limit")
         else:
-            counter.remove_class("warning")
+            counter.remove_class("over-limit")
 
     def on_button_pressed(self, event: Button.Pressed):
         if event.button.id == "send-btn":

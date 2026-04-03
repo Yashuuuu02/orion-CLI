@@ -22,7 +22,7 @@ class MainScreen(Screen):
     #header   { dock: top; height: 1; background: $accent; color: $text; padding: 0 1; }
     #sidebar  { width: 25%; height: 100%; border-right: solid $accent; }
     #chat     { width: 1fr; height: 1fr; }
-    #input-bar { dock: bottom; height: 3; }
+    #input-bar { dock: bottom; height: auto; }
     #status   { dock: bottom; height: 1; background: $surface; padding: 0 1; }
     """
 
