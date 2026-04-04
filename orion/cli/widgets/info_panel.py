@@ -71,7 +71,7 @@ class InfoPanel(Static):
     def compose(self) -> ComposeResult:
         with Vertical(id="info-container"):
             # Header Branding
-            yield Label("⚡ ORION CLI", id="brand-header")
+            yield Label("ORION", id="brand-header")
             
             # Context / Model Section
             with Vertical(classes="info-section"):
