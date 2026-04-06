@@ -20,7 +20,7 @@ PLACEHOLDER_REPLIES = [
 class MainScreen(Screen):
     DEFAULT_CSS = """
     #header   { dock: top; height: 1; background: $accent; color: $text; padding: 0 1; display: none; }
-    #sidebar  { width: 32; height: 100%; border-left: solid #2e2e2e; }
+    #sidebar  { width: 42; height: 100%; border-left: solid #2e2e2e; }
     #chat-column { width: 1fr; height: 1fr; layout: vertical; }
     #chat     { height: 1fr; }
     #input-bar { border-top: solid #2e2e2e; }
