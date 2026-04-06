@@ -27,8 +27,8 @@ class SplashScreen(Screen):
 
     #logo {
         text-align: center;
-        color: #555555;
-        width: auto;
+        color: $accent;
+        width: 100%;
         height: auto;
         content-align: center middle;
         padding-bottom: 2;
@@ -42,6 +42,7 @@ class SplashScreen(Screen):
         width: 62;
         height: auto;
         align: center middle;
+        layout: vertical;
     }
 
     #splash-input-bar {
@@ -92,9 +93,8 @@ class SplashScreen(Screen):
     ]
 
     def compose(self) -> ComposeResult:
-        yield Static(ORION_LOGO, id="logo")
-
         with Container(id="center-panel"):
+            yield Static(ORION_LOGO, id="logo")
             yield InputBar(id="splash-input-bar")
             yield Static(
                 "[dim]tab[/] agents   [dim]ctrl+p[/] commands",
