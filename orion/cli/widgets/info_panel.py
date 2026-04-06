@@ -12,10 +12,17 @@ class InfoPanel(Static):
 
     DEFAULT_CSS = """
     InfoPanel {
-        width: 32;
+        width: 42;
         background: $surface;
         padding: 1 2;
         border-left: solid #2e2e2e;
+        layout: vertical;
+    }
+
+    #info-container {
+        width: 100%;
+        height: 1fr;
+        layout: vertical;
     }
 
     #brand-header {
@@ -35,21 +42,31 @@ class InfoPanel(Static):
         margin-bottom: 0;
     }
 
-    .data-row {
+    .data-line {
         height: 1;
         width: 100%;
+        color: #aaaaaa;
     }
 
-    .data-label {
-        color: #888888;
-        width: 1fr;
+    #info-spacer {
+        height: 1fr;
     }
 
-    .data-value {
-        color: $text;
-        text-align: right;
-        width: 1fr;
+    #bottom-section {
+        height: auto;
+        width: 100%;
+        padding-top: 1;
+        border-top: solid #2e2e2e;
+    }
+
+    #val-path {
+        color: $accent;
         text-style: bold;
+        margin-bottom: 1;
+    }
+
+    #val-version {
+        color: #4CAF50;
     }
 
     #lsp-status {
@@ -76,37 +93,34 @@ class InfoPanel(Static):
             # Context / Model Section
             with Vertical(classes="info-section"):
                 yield Label("Context", classes="section-title")
-                with Horizontal(classes="data-row"):
-                    yield Label("Model", classes="data-label")
-                    yield Label(f"{self.model_name}", id="val-model", classes="data-value")
-                with Horizontal(classes="data-row"):
-                    yield Label("Session", classes="data-label")
-                    yield Label(f"{self.session_id}", id="val-session", classes="data-value")
+                yield Label(f"{self.model_name}", id="val-model", classes="data-line")
+                yield Label(f"{self.session_id}", id="val-session", classes="data-line")
 
             # Tokens / Usage Section
             with Vertical(classes="info-section"):
                 yield Label("Usage", classes="section-title")
-                with Horizontal(classes="data-row"):
-                    yield Label("Tokens", classes="data-label")
-                    yield Label(f"{self.tokens_total}", id="val-tokens", classes="data-value")
-                with Horizontal(classes="data-row"):
-                    yield Label("Cost", classes="data-label")
-                    yield Label(f"${self.cost_est:,.6f}", id="val-cost", classes="data-value")
+                yield Label(f"{self.tokens_total} tokens", id="val-tokens", classes="data-line")
+                yield Label(f"-- used", id="val-pct", classes="data-line")
+                yield Label(f"${self.cost_est:,.2f} spent", id="val-cost", classes="data-line")
 
-            # LSP / Pipeline Section
+            # Pipeline Section
             with Vertical(classes="info-section"):
                 yield Label("Pipeline", classes="section-title")
-                with Horizontal(classes="data-row"):
-                    yield Label("IISG Rate", classes="data-label")
-                    yield Label(f"{self.iisg_rate}", id="val-iisg", classes="data-value")
-                with Horizontal(classes="data-row"):
-                    yield Label("RL Action", classes="data-label")
-                    yield Label(f"{self.rl_action}", id="val-rl", classes="data-value")
+                yield Label(f"IISG Rate  {self.iisg_rate}", id="val-iisg", classes="data-line")
+                yield Label(f"RL Action  {self.rl_action}", id="val-rl", classes="data-line")
             
-            # Project / LSP Status
+            # LSP Status
             with Vertical(classes="info-section", id="lsp-info"):
                 yield Label("LSP", classes="section-title")
                 yield Label("LSPs will activate as files are read", id="lsp-status")
+
+            # Spacer — pushes bottom section down
+            yield Static("", id="info-spacer")
+
+            # Bottom-pinned: path and version
+            with Vertical(id="bottom-section"):
+                yield Label(f"/D:\\orion-CLI:main", id="val-path")
+                yield Label("● OpenCode 1.3.15", id="val-version")
 
     # API wrappers mapping external updates to reactive properties safely
     def update_model(self, tier: str, model: str):
@@ -117,6 +131,9 @@ class InfoPanel(Static):
         self.tokens_completion = completion
         self.tokens_total = prompt + completion
         self.cost_est = (prompt * 0.0000002) + (completion * 0.0000008)
+        pct = ((prompt + completion) / max(1, prompt + completion + 1000)) * 100
+        try: self.query_one("#val-pct", Label).update(f"{pct:.0f}% used")
+        except: pass
 
     def update_session(self, name: str, cwd: str):
         self.session_id = name
@@ -130,11 +147,11 @@ class InfoPanel(Static):
 
     # Reactivity Watches allowing Textual DOM updates seamlessly
     def watch_tokens_total(self, value: int) -> None:
-        try: self.query_one("#val-tokens", Label).update(f"{value:,}")
+        try: self.query_one("#val-tokens", Label).update(f"{value:,} tokens")
         except: pass
         
     def watch_cost_est(self, value: float) -> None:
-        try: self.query_one("#val-cost", Label).update(f"${value:,.6f}")
+        try: self.query_one("#val-cost", Label).update(f"${value:,.2f} spent")
         except: pass
 
     def watch_model_name(self, value: str) -> None:
@@ -146,9 +163,9 @@ class InfoPanel(Static):
         except: pass
 
     def watch_iisg_rate(self, value: str) -> None:
-        try: self.query_one("#val-iisg", Label).update(value)
+        try: self.query_one("#val-iisg", Label).update(f"IISG Rate  {value}")
         except: pass
 
     def watch_rl_action(self, value: str) -> None:
-        try: self.query_one("#val-rl", Label).update(value)
+        try: self.query_one("#val-rl", Label).update(f"RL Action  {value}")
         except: pass
