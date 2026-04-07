@@ -79,7 +79,22 @@ class MainScreen(Screen):
             "edit":  EditTool(),
             "grep":  GrepTool(),
         }
-        self.runner = PipelineRunner(provider=provider, tools=self.tools)
+
+        use_bandit = os.environ.get("ORION_USE_BANDIT", "false").lower() == "true"
+        if use_bandit:
+            try:
+                from orion.rl.bandit import LinUCBBandit
+                from orion.rl.state_encoder import StateEncoder
+                bandit = LinUCBBandit()
+                state_encoder = StateEncoder()
+                self.runner = PipelineRunner(provider=provider, tools=self.tools, bandit=bandit, state_encoder=state_encoder)
+                self._use_bandit = True
+            except Exception:
+                self.runner = PipelineRunner(provider=provider, tools=self.tools)
+                self._use_bandit = False
+        else:
+            self.runner = PipelineRunner(provider=provider, tools=self.tools)
+            self._use_bandit = False
 
         self.call_after_refresh(self._load_initial_messages)
         self.query_one(InputBar).focus()
@@ -138,6 +153,7 @@ class MainScreen(Screen):
             on_stage=on_stage,
             on_token_delta=on_token_delta,
             conversation_history=conversation_history,
+            use_bandit=getattr(self, '_use_bandit', False),
         )
 
         # Finalize streaming, add real assistant message

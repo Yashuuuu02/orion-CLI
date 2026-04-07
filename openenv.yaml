@@ -1,0 +1,233 @@
+openapi: 3.0.0
+info:
+  title: Orion CLI OpenEnv
+  description: RL-optimised agentic coding assistant - OpenEnv interface
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:8000
+    description: Local development server
+  - url: https://your-space.hf.space
+    description: HuggingFace Spaces deployment
+
+paths:
+  /reset:
+    post:
+      summary: Reset the environment
+      description: Initialize or reset the environment with a new task
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                difficulty:
+                  type: string
+                  enum: [easy, medium, hard]
+                  description: Optional difficulty level for task selection
+      responses:
+        '200':
+          description: Environment reset successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResetResponse'
+
+  /step:
+    post:
+      summary: Execute a step
+      description: Run the pipeline with a prompt and return state, reward, done
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - prompt
+              properties:
+                prompt:
+                  type: string
+                  description: User prompt to execute
+      responses:
+        '200':
+          description: Step executed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StepResponse'
+
+  /state:
+    get:
+      summary: Get current state
+      description: Return the current environment state
+      responses:
+        '200':
+          description: Current state retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StateResponse'
+
+  /v1/chat/completions:
+    post:
+      summary: OpenAI-compatible chat completion
+      description: Run the pipeline via OpenAI-compatible API
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatCompletionRequest'
+      responses:
+        '200':
+          description: Chat completion response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatCompletionResponse'
+
+components:
+  schemas:
+    ResetResponse:
+      type: object
+      properties:
+        task_name:
+          type: string
+          description: Name of the selected task
+        task_difficulty:
+          type: string
+          description: Difficulty level (Easy/Medium/Hard)
+        task_prompt:
+          type: string
+          description: The task prompt
+        workspace:
+          type: string
+          description: Path to the workspace directory
+        history:
+          type: array
+          description: Empty history on reset
+        total_reward:
+          type: number
+          description: Initial total reward (0.0)
+        steps:
+          type: integer
+          description: Initial step count (0)
+
+    StepResponse:
+      type: object
+      properties:
+        state:
+          $ref: '#/components/schemas/StateResponse'
+        reward:
+          type: number
+          description: Reward from this step (0.0-1.0)
+        done:
+          type: boolean
+          description: Whether episode is complete
+
+    StateResponse:
+      type: object
+      properties:
+        task_name:
+          type: string
+        task_difficulty:
+          type: string
+        task_prompt:
+          type: string
+        workspace:
+          type: string
+        history:
+          type: array
+          items:
+            type: object
+            properties:
+              type:
+                type: string
+              step:
+                type: integer
+              prompt:
+                type: string
+              response:
+                type: string
+              reward:
+                type: number
+              iisg_rate:
+                type: number
+              action:
+                type: string
+        total_reward:
+          type: number
+        steps:
+          type: integer
+
+    ChatCompletionRequest:
+      type: object
+      required:
+        - messages
+      properties:
+        model:
+          type: string
+          default: orion
+        messages:
+          type: array
+          items:
+            type: object
+            properties:
+              role:
+                type: string
+                enum: [system, user, assistant]
+              content:
+                type: string
+        temperature:
+          type: number
+          minimum: 0
+          maximum: 2
+          default: 0.7
+        max_tokens:
+          type: integer
+          minimum: 1
+          maximum: 4096
+          default: 2048
+
+    ChatCompletionResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        object:
+          type: string
+          default: chat.completion
+        created:
+          type: integer
+        model:
+          type: string
+        choices:
+          type: array
+          items:
+            type: object
+            properties:
+              index:
+                type: integer
+              message:
+                type: object
+                properties:
+                  role:
+                    type: string
+                  content:
+                    type: string
+              finish_reason:
+                type: string
+        usage:
+          type: object
+          properties:
+            prompt_tokens:
+              type: integer
+            completion_tokens:
+              type: integer
+            total_tokens:
+              type: integer
+
+tags:
+  - name: OpenEnv
+    description: OpenEnv interface endpoints
+  - name: OpenAI
+    description: OpenAI-compatible API endpoints

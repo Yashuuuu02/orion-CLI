@@ -50,6 +50,7 @@ class PipelineContext:
     tokens_used: int = 0
     reward: float = 0.0
     action: dict = field(default_factory=dict)
+    action_name: str = ""
     final_response: str = ""
     time_taken: float = 0.0
     error: str = ""
