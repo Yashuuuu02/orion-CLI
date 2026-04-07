@@ -121,3 +121,38 @@ class ChatPanel(Widget):
     def clear(self):
         self.query_one("#chat-scroll", VerticalScroll).query(ChatMessage).remove()
         self.remove_thinking()
+
+    def add_streaming_chunk(self, chunk: str):
+        """Append a streaming token chunk to a live streaming message."""
+        scroll = self.query_one("#chat-scroll", VerticalScroll)
+
+        if not hasattr(self, "_streaming_content"):
+            self._streaming_content = ""
+            self._streaming_msg = None
+
+        if self._streaming_msg is None:
+            self.remove_thinking()
+            self._streaming_content = ""
+            self._streaming_msg = ChatMessage(
+                role="assistant",
+                content=Text(""),
+                model="streaming",
+                time_taken=0,
+                status="streaming",
+            )
+            scroll.mount(self._streaming_msg)
+
+        self._streaming_content += chunk
+        self._streaming_msg.content = Text(self._streaming_content)
+        self._streaming_msg.refresh()
+        scroll.scroll_end(animate=False)
+
+    def finalize_streaming(self):
+        """Remove the streaming placeholder before adding the final message."""
+        if hasattr(self, "_streaming_msg") and self._streaming_msg is not None:
+            try:
+                self._streaming_msg.remove()
+            except Exception:
+                pass
+            self._streaming_msg = None
+            self._streaming_content = ""

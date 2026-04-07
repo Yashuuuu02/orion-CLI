@@ -1,20 +1,16 @@
 import os
-import random
+import sys
+from textual import work
 from textual.screen import Screen
 from textual.app import ComposeResult
-from textual.widgets import Static, Input
+from textual.widgets import Static
 from textual.containers import Horizontal, Vertical
 from orion.cli.widgets.info_panel import InfoPanel
 from orion.cli.widgets.chat_panel import ChatPanel
 from orion.cli.widgets.input_bar import InputBar
-
-PLACEHOLDER_REPLIES = [
-    "Processing... (Phase 2 will wire the real pipeline here)",
-    "Got it. Orion pipeline coming in Phase 2.",
-    "Noted. AI backend connects in Phase 2.",
-    "Received. Pipeline integration is next.",
-    "On it. Real responses coming soon.",
-]
+from orion.provider.provider import Provider
+from orion.pipeline.runner import PipelineRunner, DEFAULT_ACTION
+from orion.tool.tools import ReadTool, WriteTool, EditTool, GrepTool
 
 
 class MainScreen(Screen):
@@ -42,6 +38,7 @@ class MainScreen(Screen):
     def __init__(self, initial_message: str = "", **kwargs):
         super().__init__(**kwargs)
         self._initial_message = initial_message
+        self._thinking = False
 
     def compose(self) -> ComposeResult:
         yield Static("", id="header")
@@ -72,11 +69,21 @@ class MainScreen(Screen):
                 if "/" in self.app.config.default_model else "fast",
             self.app.config.default_model
         )
-        panel.update_session(self.session['name'], self.session['cwd'])
+        panel.update_session(self.session["name"], self.session["cwd"])
+
+        # Wire up the pipeline
+        provider = Provider(api_key=self.app.config.nim_api_key)
+        self.tools = {
+            "read":  ReadTool(),
+            "write": WriteTool(),
+            "edit":  EditTool(),
+            "grep":  GrepTool(),
+        }
+        self.runner = PipelineRunner(provider=provider, tools=self.tools)
 
         self.call_after_refresh(self._load_initial_messages)
         self.query_one(InputBar).focus()
-        
+
     def _load_initial_messages(self):
         for msg in self.app.session_manager.get_messages(self.session["id"]):
             self.query_one("#chat", ChatPanel).add_message(
@@ -90,37 +97,78 @@ class MainScreen(Screen):
 
     def _handle_user_message(self, text: str):
         text = text.strip()
-        if not text:
+        if not text or self._thinking:
             return
-            
+
         self._thinking = True
         input_bar = self.query_one(InputBar)
         input_bar.disabled = True
-        
+
         chat = self.query_one("#chat", ChatPanel)
         chat.add_message("user", text)
         self.app.session_manager.add_message(self.session["id"], "user", text)
         self._update_status()
         chat.add_thinking()
-        self.set_timer(0.5, self._placeholder_reply)
 
-    def _placeholder_reply(self):
-        reply = random.choice(PLACEHOLDER_REPLIES)
+        # Fire the real pipeline
+        self._run_pipeline(text)
+
+    @work(exclusive=True, thread=False)
+    async def _run_pipeline(self, text: str):
         chat = self.query_one("#chat", ChatPanel)
-        active_model = self.app.config.default_model
-        chat.add_message("assistant", reply, model=active_model, time_taken=0.5, status="completed")
-        self.app.session_manager.add_message(
-            self.session["id"], "assistant", reply
-        )
-        self._update_status()
-        
-        # Simulate token usage for Phase 1
         panel = self.query_one("#sidebar", InfoPanel)
-        self._total_prompt += random.randint(50, 200)
-        self._total_completion += random.randint(30, 150)
+
+        # Build conversation history — last 10 messages only
+        history = self.app.session_manager.get_messages(self.session["id"])
+        conversation_history = [
+            {"role": m["role"], "content": m["content"]}
+            for m in history[-10:]
+            if m["role"] in ("user", "assistant")
+        ]
+
+        def on_stage(msg: str):
+            chat.add_message("system", msg)
+
+        def on_token_delta(chunk: str):
+            chat.add_streaming_chunk(chunk)
+
+        ctx = await self.runner.run(
+            prompt=text,
+            action=DEFAULT_ACTION,
+            on_stage=on_stage,
+            on_token_delta=on_token_delta,
+            conversation_history=conversation_history,
+        )
+
+        # Finalize streaming, add real assistant message
+        chat.finalize_streaming()
+        active_model = self.app.config.default_model
+        chat.add_message(
+            "assistant",
+            ctx.final_response,
+            model=active_model,
+            time_taken=ctx.time_taken,
+            status="completed" if not ctx.error else "error",
+        )
+
+        # Persist to DB
+        self.app.session_manager.add_message(
+            self.session["id"], "assistant", ctx.final_response
+        )
+
+        # Update info panel with real values
+        self._total_prompt += self.runner.provider.total_prompt_tokens
+        self._total_completion += self.runner.provider.total_completion_tokens
         panel.update_tokens(self._total_prompt, self._total_completion)
-        
+        if hasattr(panel, "update_pipeline"):
+            panel.update_pipeline(
+                ctx.iisg_pass_rate,
+                ctx.action.get("coder_tier", "coder"),
+            )
+
+        # Re-enable input
         self._thinking = False
+        self._update_status()
         input_bar = self.query_one(InputBar)
         input_bar.disabled = False
         input_bar.focus()
@@ -133,7 +181,6 @@ class MainScreen(Screen):
         )
 
     def _update_status(self):
-        # Update git status path
         cwd = os.getcwd()
         branch = "main"
         try:
@@ -143,20 +190,16 @@ class MainScreen(Screen):
                     content = f.read().strip()
                 if content.startswith("ref: refs/heads/"):
                     branch = content.replace("ref: refs/heads/", "")
-        except:
+        except Exception:
             pass
-            
         repo_name = os.path.basename(cwd)
-        self.query_one("#status-left", Static).update(f"📂 {repo_name} · 🌿 {branch}")
+        self.query_one("#status-left", Static).update(
+            f"📂 {repo_name} · 🌿 {branch}"
+        )
 
-    def action_quit(self):
-        self.app.exit()
-
-    def action_toggle_sidebar(self):
-        self.query_one("#sidebar").toggle_class("hidden")
-
-    def action_clear_chat(self):
-        self.query_one("#chat", ChatPanel).clear()
+    def action_quit(self):           self.app.exit()
+    def action_toggle_sidebar(self): self.query_one("#sidebar").toggle_class("hidden")
+    def action_clear_chat(self):     self.query_one("#chat", ChatPanel).clear()
 
     def action_new_session(self):
         self.session = self.app.session_manager.create_session(os.getcwd())
@@ -165,12 +208,11 @@ class MainScreen(Screen):
         chat.add_message("system", "New session")
         self._update_header()
         self._update_status()
-        
         self._total_prompt = 0
         self._total_completion = 0
         panel = self.query_one("#sidebar", InfoPanel)
         panel.update_tokens(0, 0)
-        panel.update_session(self.session['name'], self.session['cwd'])
+        panel.update_session(self.session["name"], self.session["cwd"])
 
     def action_session_history(self):
         from orion.cli.screens.history import HistoryScreen
@@ -179,19 +221,15 @@ class MainScreen(Screen):
     def _switch_to_session(self, session_id: str | None):
         if not session_id:
             return
-            
         sessions = self.app.session_manager.get_all_sessions()
         for s in sessions:
             if s["id"] == session_id:
                 self.session = s
                 break
-                
         chat = self.query_one("#chat", ChatPanel)
         chat.clear()
-        
         for msg in self.app.session_manager.get_messages(self.session["id"]):
             chat.add_message(msg["role"], msg["content"])
-            
         self._update_header()
         self._update_status()
 
