@@ -9,7 +9,7 @@ MODELS = {
     "balanced": "nvidia_nim/meta/llama-3.3-70b-instruct",
     "heavy":    "nvidia_nim/deepseek/deepseek-v3",
 }
-NIM_BASE_URL = "https://integrate.api.nvidia.com/v1"
+NIM_BASE_URL = os.getenv("API_BASE_URL", "https://integrate.api.nvidia.com/v1")
 
 class ProviderError(Exception):
     pass

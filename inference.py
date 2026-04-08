@@ -25,7 +25,11 @@ def log_end(success, steps, score, rewards):
 
 
 async def main():
-    api_key = os.environ.get("NVIDIA_NIM_API_KEY", "")
+    api_key = (
+        os.environ.get("HF_TOKEN") or 
+        os.environ.get("NVIDIA_NIM_API_KEY") or 
+        ""
+    )
     env = OpenEnv(api_key=api_key)
 
     client = AsyncOpenAI(
