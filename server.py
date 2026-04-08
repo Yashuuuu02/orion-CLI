@@ -94,6 +94,20 @@ async def state():
     return _env.get_state()
 
 
+@app.get("/tasks")
+async def get_tasks():
+    """Return a list of available tasks."""
+    from tasks.task_bank import TASKS
+    return [{"name": t.name, "difficulty": t.difficulty, "prompt": t.prompt} for t in TASKS]
+
+
+@app.get("/openenv.yaml")
+async def get_openenv_yaml():
+    """Return the openenv.yaml file."""
+    from fastapi.responses import FileResponse
+    return FileResponse("openenv.yaml", media_type="text/plain")
+
+
 # ---------------------------------------------------------------------------
 # Entry-point
 # ---------------------------------------------------------------------------
