@@ -53,22 +53,22 @@ def _safe_exec(code: str, path: str) -> dict:
 def grade_easy(workspace: str) -> float:
     utils_path = os.path.join(workspace, "utils.py")
     if not os.path.exists(utils_path):
-        return 0.0
+        return 0.01
 
     try:
         code = open(utils_path).read()
         compile(code, utils_path, "exec")
     except SyntaxError:
-        return 0.0
+        return 0.01
 
     try:
         namespace = _safe_exec(code, utils_path)
         if "_error" in namespace:
-            return 0.0
+            return 0.01
         if "add" in namespace:
             result = namespace["add"](2, 3)
             if result == 5:
-                return 1.0
+                return 0.99
             return 0.5
         return 0.25
     except Exception:
@@ -78,24 +78,24 @@ def grade_easy(workspace: str) -> float:
 def grade_medium(workspace: str) -> float:
     buggy_path = os.path.join(workspace, "buggy.py")
     if not os.path.exists(buggy_path):
-        return 0.0
+        return 0.01
 
     try:
         code = open(buggy_path).read()
         compile(code, buggy_path, "exec")
     except SyntaxError:
-        return 0.0
+        return 0.01
 
     try:
         namespace = _safe_exec(code, buggy_path)
         if "_error" in namespace:
-            return 0.0
+            return 0.01
         if "add" in namespace:
             result = namespace["add"](2, 3)
             if result is None:
-                return 0.0
+                return 0.01
             if result == 5:
-                return 1.0
+                return 0.99
             return 0.5
         return 0.25
     except Exception:
@@ -105,18 +105,18 @@ def grade_medium(workspace: str) -> float:
 def grade_hard(workspace: str) -> float:
     monolith_path = os.path.join(workspace, "monolith.py")
     if not os.path.exists(monolith_path):
-        return 0.0
+        return 0.01
 
     try:
         code = open(monolith_path).read()
         compile(code, monolith_path, "exec")
     except SyntaxError:
-        return 0.0
+        return 0.01
 
     try:
         namespace = _safe_exec(code, monolith_path)
         if "_error" in namespace:
-            return 0.0
+            return 0.01
 
         has_parse = "parse_input" in namespace
         has_process = "process_data" in namespace
@@ -132,7 +132,7 @@ def grade_hard(workspace: str) -> float:
             formatted = namespace["format_output"](processed)
 
             if formatted and isinstance(formatted, str):
-                return 1.0
+                return 0.99
             return 0.7
         except Exception:
             return 0.5
@@ -160,7 +160,7 @@ TASKS = [
     Task(
         name="hard_refactor",
         difficulty="Hard",
-        prompt="Refactor the monolith.py file. Create three functions: parse_input(data), process(data), and format_output(data). Keep the original logic but split it into these three functions.",
+        prompt="Refactor the monolith.py file. Create three functions: parse_input(data), process_data(data), and format_output(data). Keep the original logic but split it into these three functions.",
         setup_files={
             "monolith.py": """def process_data(input_data):
     cleaned = input_data.strip().lower()
