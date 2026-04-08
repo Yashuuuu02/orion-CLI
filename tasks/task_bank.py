@@ -205,7 +205,7 @@ class TaskBank:
 
     def grade(self, workspace: str) -> float:
         if not self.current_task:
-            return 0.0
+            return 0.01
         return self.current_task.grader(workspace)
 
     def reset(self) -> dict:
