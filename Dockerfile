@@ -15,15 +15,16 @@ COPY orion/ ./orion/
 COPY tasks/ ./tasks/
 COPY env.py .
 COPY inference.py .
+COPY server.py .
 COPY openenv.yaml .
 
 RUN chown -R orion:orion /app
 
-ENV NVIDIA_NIM_API_KEY=""
-ENV PORT=8000
+ENV NVIDIA_NIM_API_KEY="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"
+ENV PORT=7860
 
-EXPOSE 8000
+EXPOSE 7860
 
 USER orion
 
-CMD ["python", "inference.py"]
+CMD ["python", "server.py"]
