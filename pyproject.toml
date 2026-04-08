@@ -18,11 +18,13 @@ dependencies = [
     "litellm>=1.0.0",
     "httpx>=0.24.0",
     "slowapi>=0.1.9",
+    "openenv-core>=0.2.0",
 ]
 
 [project.scripts]
 "summon-orion" = "orion.cli.app:main"
+server = "server.app:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["orion*"]
+include = ["orion*", "tasks*"]

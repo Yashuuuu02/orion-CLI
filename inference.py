@@ -1,181 +1,86 @@
 import os
 import asyncio
-import json
-from typing import Optional
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
-from slowapi import Limiter
-from slowapi.util import get_remote_address
-from slowapi.errors import RateLimitExceeded
+from openai import AsyncOpenAI
+from env import OpenEnv
 
-limiter = Limiter(key_func=get_remote_address)
+API_BASE_URL = os.getenv("API_BASE_URL", "https://integrate.api.nvidia.com/v1")
+MODEL_NAME = os.getenv("MODEL_NAME", "nvidia_nim/qwen/qwen2.5-coder-32b-instruct")
+HF_TOKEN = os.getenv("HF_TOKEN")
 
-app = FastAPI(title="Orion CLI - OpenEnv API")
-app.state.limiter = limiter
+MAX_STEPS = 8
 
-@app.exception_handler(RateLimitExceeded)
-async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
-    return JSONResponse(
-        status_code=429,
-        content={"detail": "Rate limit exceeded. Please try again later."}
+
+def log_start(task, env_name, model):
+    print(f"[START] task={task} env={env_name} model={model}", flush=True)
+
+
+def log_step(step, action, reward, done, error):
+    error_val = error if error else "null"
+    print(f"[STEP] step={step} action={action} reward={reward:.2f} done={str(done).lower()} error={error_val}", flush=True)
+
+
+def log_end(success, steps, score, rewards):
+    rewards_str = ",".join(f"{r:.2f}" for r in rewards)
+    print(f"[END] success={str(success).lower()} steps={steps} score={score:.2f} rewards={rewards_str}", flush=True)
+
+
+async def main():
+    api_key = os.environ.get("NVIDIA_NIM_API_KEY", "")
+    env = OpenEnv(api_key=api_key)
+
+    client = AsyncOpenAI(
+        base_url=API_BASE_URL,
+        api_key=api_key or HF_TOKEN or "no-key",
     )
 
-api_key = os.environ.get("NVIDIA_NIM_API_KEY", "")
+    state = await env.reset()
+    task_name = state["task_name"]
+    task_prompt = state["task_prompt"]
 
+    log_start(task=task_name, env_name="orion", model=MODEL_NAME)
 
-class ChatMessage(BaseModel):
-    role: str
-    content: str
-
-
-class ChatCompletionRequest(BaseModel):
-    model: str = "orion"
-    messages: list[ChatMessage]
-    temperature: Optional[float] = 0.7
-    max_tokens: Optional[int] = 2048
-
-
-class ChatCompletionChoice(BaseModel):
-    index: int
-    message: ChatMessage
-    finish_reason: str
-
-
-class ChatCompletionResponse(BaseModel):
-    id: str
-    object: str = "chat.completion"
-    created: int
-    model: str
-    choices: list[ChatCompletionChoice]
-    usage: dict
-
-
-class ResetRequest(BaseModel):
-    difficulty: Optional[str] = None
-
-
-class StepRequest(BaseModel):
-    prompt: str
-
-
-_state = {}
-
-
-@app.get("/")
-@limiter.limit("30/minute")
-async def root(request: Request):
-    return {"status": "ok", "service": "Orion CLI OpenEnv"}
-
-
-@app.get("/health")
-@limiter.limit("60/minute")
-async def health(request: Request):
-    return {"status": "healthy"}
-
-
-@app.post("/v1/chat/completions")
-@limiter.limit("10/minute")
-async def chat_completions(request: Request):
-    req = await request.json()
-    if not api_key:
-        raise HTTPException(status_code=401, detail="NVIDIA_NIM_API_KEY not configured")
-
-    if not req.get("messages"):
-        raise HTTPException(status_code=400, detail="No messages provided")
-
-    user_message = req["messages"][-1]["content"]
-
-    from env import get_env
-    env = get_env(api_key)
-
-    if "reset" not in _state:
-        await env.reset()
-        _state["reset"] = True
+    rewards = []
+    steps = 0
+    success = False
 
     try:
-        result_state, reward, done = await env.step(user_message)
+        for i in range(1, MAX_STEPS + 1):
+            messages = [
+                {"role": "system", "content": "You are a coding assistant. Respond with the action to take."},
+                {"role": "user", "content": task_prompt},
+            ]
 
-        response_content = json.dumps({
-            "response": result_state.get("history", [])[-1].get("response", "") if result_state.get("history") else "",
-            "reward": reward,
-            "done": done,
-            "total_reward": result_state.get("total_reward", 0),
-            "steps": result_state.get("steps", 0),
-            "iisg_rate": result_state.get("history", [])[-1].get("iisg_rate", 0) if result_state.get("history") else 0,
-        })
-
-        return ChatCompletionResponse(
-            id=f"orion-{int(asyncio.get_event_loop().time() * 1000)}",
-            created=int(asyncio.get_event_loop().time()),
-            model=req.get("model", "orion"),
-            choices=[
-                ChatCompletionChoice(
-                    index=0,
-                    message=ChatMessage(role="assistant", content=response_content),
-                    finish_reason="stop"
+            error = None
+            try:
+                response = await client.chat.completions.create(
+                    model=MODEL_NAME,
+                    messages=messages,
                 )
-            ],
-            usage={
-                "prompt_tokens": 0,
-                "completion_tokens": len(response_content),
-                "total_tokens": len(response_content)
-            }
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+                action_text = response.choices[0].message.content or ""
+            except Exception as e:
+                action_text = ""
+                error = str(e)
 
+            try:
+                result_state, reward, done = await env.step(action_text)
+            except Exception as e:
+                reward = 0.0
+                done = True
+                error = str(e)
 
-@app.post("/reset")
-@limiter.limit("20/minute")
-async def reset(request: Request):
-    req_json = await request.json()
-    if not api_key:
-        raise HTTPException(status_code=401, detail="NVIDIA_NIM_API_KEY not configured")
+            rewards.append(reward)
+            steps = i
 
-    from env import get_env
-    env = get_env(api_key)
-    difficulty = req_json.get("difficulty")
-    result = await env.reset(difficulty)
-    _state["reset"] = True
-    _state["difficulty"] = difficulty
-    return result
+            log_step(step=i, action=task_name, reward=reward, done=done, error=error)
 
-
-@app.post("/step")
-@limiter.limit("20/minute")
-async def step(request: Request):
-    req_json = await request.json()
-    if not api_key:
-        raise HTTPException(status_code=401, detail="NVIDIA_NIM_API_KEY not configured")
-
-    if "reset" not in _state:
-        raise HTTPException(status_code=400, detail="Call /reset first")
-
-    from env import get_env
-    env = get_env(api_key)
-    prompt = req_json.get("prompt", "")
-    result_state, reward, done = await env.step(prompt)
-
-    return {
-        "state": result_state,
-        "reward": reward,
-        "done": done
-    }
-
-
-@app.get("/state")
-@limiter.limit("30/minute")
-async def get_state(request: Request):
-    if "reset" not in _state:
-        raise HTTPException(status_code=400, detail="Call /reset first")
-
-    from env import get_env
-    env = get_env(api_key)
-    return await env.state()
+            if done:
+                success = reward >= 0.95
+                break
+    finally:
+        env.close()
+        score = sum(rewards) / len(rewards) if rewards else 0.0
+        log_end(success=success, steps=steps, score=score, rewards=rewards)
 
 
 if __name__ == "__main__":
-    import uvicorn
-    port = int(os.environ.get("PORT", "8000"))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    asyncio.run(main())

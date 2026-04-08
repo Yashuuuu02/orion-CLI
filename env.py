@@ -73,10 +73,10 @@ class OpenEnv:
 
         self.state.steps += 1
 
-        async def on_stage(msg: str):
+        def on_stage(msg: str):
             self.state.history.append({"type": "stage", "message": msg})
 
-        async def on_token_delta(chunk: str):
+        def on_token_delta(chunk: str):
             pass
 
         conversation_history = [{"role": "user", "content": prompt}]
@@ -129,7 +129,7 @@ class OpenEnv:
             "steps": self.state.steps,
         }
 
-    async def state(self) -> dict:
+    def get_state(self) -> dict:
         return self._get_state_dict()
 
     def close(self):
@@ -162,4 +162,4 @@ async def step(prompt: str) -> tuple[dict, float, bool]:
 
 async def state() -> dict:
     env = get_env(os.environ.get("NVIDIA_NIM_API_KEY", ""))
-    return await env.state()
+    return await env.get_state()

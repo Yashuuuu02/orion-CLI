@@ -119,7 +119,7 @@ def grade_hard(workspace: str) -> float:
             return 0.0
 
         has_parse = "parse_input" in namespace
-        has_process = "process" in namespace
+        has_process = "process_data" in namespace
         has_format = "format_output" in namespace
 
         if not (has_parse and has_process and has_format):
@@ -128,7 +128,7 @@ def grade_hard(workspace: str) -> float:
         test_input = "hello world"
         try:
             parsed = namespace["parse_input"](test_input)
-            processed = namespace["process"](parsed)
+            processed = namespace["process_data"](parsed)
             formatted = namespace["format_output"](processed)
 
             if formatted and isinstance(formatted, str):

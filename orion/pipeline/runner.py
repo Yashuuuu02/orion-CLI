@@ -11,7 +11,9 @@ except ImportError:
     RL_AVAILABLE = False
 
 DEFAULT_ACTION = {
+    "planner_tier": "fast",
     "coder_tier": "coder",
+    "reviewer_tier": False,
 }
 
 class PipelineRunner:
@@ -21,15 +23,10 @@ class PipelineRunner:
         self.bandit = bandit
         self.state_encoder = state_encoder or (StateEncoder() if RL_AVAILABLE else None)
 
-    def _get_action(self, intent) -> dict:
+    def _get_action(self, intent, selected_action) -> dict:
         if self.bandit and self.state_encoder and RL_AVAILABLE:
             try:
-                state = self.state_encoder.encode(
-                    intent_type=intent.intent_type,
-                    complexity=intent.complexity,
-                )
-                action_idx = self.bandit.select(state.to_list())
-                action = self.bandit.get_action(action_idx)
+                action = self.bandit.get_action(selected_action)
                 pipeline_action = action_to_pipeline(action)
                 return pipeline_action
             except Exception:
@@ -64,13 +61,13 @@ class PipelineRunner:
             )
 
             if use_bandit and self.bandit and self.state_encoder:
-                action = self._get_action(ctx.intent)
-                ctx.action_name = self.bandit.get_action_name(
-                    self.bandit.select(self.state_encoder.encode(
-                        ctx.intent.intent_type,
-                        ctx.intent.complexity,
-                    ).to_list())
+                state = self.state_encoder.encode(
+                    ctx.intent.intent_type,
+                    ctx.intent.complexity,
                 )
+                selected_action = self.bandit.select(state.to_list())
+                action = self._get_action(ctx.intent, selected_action)
+                ctx.action_name = self.bandit.get_action_name(selected_action)
             else:
                 ctx.action_name = "default"
 
@@ -106,12 +103,7 @@ class PipelineRunner:
             )
 
             if use_bandit and self.bandit and self.state_encoder:
-                state = self.state_encoder.encode(
-                    ctx.intent.intent_type,
-                    ctx.intent.complexity,
-                )
-                action_idx = self.bandit.select(state.to_list())
-                self._update_bandit(state.to_list(), action_idx, ctx.reward)
+                self._update_bandit(state.to_list(), selected_action, ctx.reward)
                 self.state_encoder.save_history(ctx.iisg_pass_rate)
 
             # Strip all tool blocks from final response

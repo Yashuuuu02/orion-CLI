@@ -10,7 +10,7 @@ ACTIONS = [
     {"planner": "fast", "coder": "coder", "reviewer": True},
     {"planner": "balanced", "coder": "coder", "reviewer": True},
     {"planner": "fast", "coder": "fast", "reviewer": True},
-    {"planner": "fast", "coder": "coder", "reviewer": True},
+    {"planner": "balanced", "coder": "heavy", "reviewer": True},
     {"planner": "balanced", "coder": "coder", "reviewer": True},
     {"planner": "balanced", "coder": "heavy", "reviewer": False},
 ]
@@ -21,7 +21,7 @@ ACTION_NAMES = [
     "fast-coder-balanced-review",
     "balanced-coder-balanced-review",
     "fast-fast-with-review",
-    "fast-coder-with-review",
+    "balanced-heavy-with-review",
     "balanced-coder-with-review",
     "balanced-heavy-no-review",
 ]
@@ -136,5 +136,7 @@ def get_default_action() -> dict:
 
 def action_to_pipeline(action: dict) -> dict:
     return {
+        "planner_tier": action.get("planner", "fast"),
         "coder_tier": action.get("coder", "coder"),
+        "reviewer_tier": action.get("reviewer", False),
     }
