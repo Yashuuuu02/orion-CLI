@@ -16,12 +16,15 @@ def log_start(task, env_name, model):
 
 def log_step(step, action, reward, done, error):
     error_val = error if error else "null"
-    print(f"[STEP] step={step} action={action} reward={reward:.2f} done={str(done).lower()} error={error_val}", flush=True)
+    display_reward = min(max(reward, 0.01), 0.99)
+    print(f"[STEP] step={step} action={action} reward={display_reward:.2f} done={str(done).lower()} error={error_val}", flush=True)
 
 
 def log_end(success, steps, score, rewards):
-    rewards_str = ",".join(f"{r:.2f}" for r in rewards)
-    print(f"[END] success={str(success).lower()} steps={steps} score={score:.2f} rewards={rewards_str}", flush=True)
+    display_rewards = [min(max(r, 0.01), 0.99) for r in rewards]
+    display_score = min(max(score, 0.01), 0.99)
+    rewards_str = ",".join(f"{r:.2f}" for r in display_rewards)
+    print(f"[END] success={str(success).lower()} steps={steps} score={display_score:.2f} rewards={rewards_str}", flush=True)
 
 
 async def main():
