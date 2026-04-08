@@ -132,6 +132,9 @@ class OpenEnv:
     def get_state(self) -> dict:
         return self._get_state_dict()
 
+    async def state(self) -> dict:
+        return self.get_state()
+
     def close(self):
         if self.state and self.state.workspace:
             try:
@@ -162,4 +165,4 @@ async def step(prompt: str) -> tuple[dict, float, bool]:
 
 async def state() -> dict:
     env = get_env(os.environ.get("NVIDIA_NIM_API_KEY", ""))
-    return await env.get_state()
+    return env.get_state()
