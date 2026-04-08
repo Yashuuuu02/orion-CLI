@@ -114,12 +114,26 @@ class PipelineRunner:
                 self._update_bandit(state.to_list(), action_idx, ctx.reward)
                 self.state_encoder.save_history(ctx.iisg_pass_rate)
 
+            # Strip all tool blocks from final response
             clean = re.sub(
-                r'<tool>.*?</tool>\s*<path>.*?</path>(?:\s*<content>.*?</content>)?',
+                r'<tool>.*?</tool>',
                 '',
                 ctx.agent.final_response,
                 flags=re.DOTALL
-            ).strip()
+            )
+            clean = re.sub(
+                r'<path>.*?</path>',
+                '',
+                clean,
+                flags=re.DOTALL
+            )
+            clean = re.sub(
+                r'<content>.*?</content>',
+                '',
+                clean,
+                flags=re.DOTALL
+            )
+            clean = re.sub(r'\n{3,}', '\n\n', clean).strip()
             ctx.final_response = clean if clean else ctx.agent.final_response
 
         except Exception as e:
