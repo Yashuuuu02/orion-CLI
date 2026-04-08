@@ -40,53 +40,59 @@ async def main():
         api_key=api_key or HF_TOKEN or "no-key",
     )
 
-    state = await env.reset()
-    task_name = state["task_name"]
-    task_prompt = state["task_prompt"]
-
-    log_start(task=task_name, env_name="orion", model=MODEL_NAME)
-
-    rewards = []
-    steps = 0
-    success = False
-
     try:
-        for i in range(1, MAX_STEPS + 1):
-            messages = [
-                {"role": "system", "content": "You are a coding assistant. Respond with the action to take."},
-                {"role": "user", "content": task_prompt},
-            ]
-
-            error = None
+        for target_task in ["easy_add", "medium_fix", "hard_refactor"]:
             try:
-                response = await client.chat.completions.create(
-                    model=MODEL_NAME,
-                    messages=messages,
-                )
-                action_text = response.choices[0].message.content or ""
-            except Exception as e:
-                action_text = ""
-                error = str(e)
+                state = await env.reset(task_name=target_task)
+            except TypeError:
+                state = await env.reset()
+            
+            task_name = state["task_name"]
+            task_prompt = state["task_prompt"]
 
-            try:
-                result_state, reward, done = await env.step(action_text)
-            except Exception as e:
-                reward = 0.0
-                done = True
-                error = str(e)
+            log_start(task=task_name, env_name="orion", model=MODEL_NAME)
 
-            rewards.append(reward)
-            steps = i
+            rewards = []
+            steps = 0
+            success = False
 
-            log_step(step=i, action=task_name, reward=reward, done=done, error=error)
+            for i in range(1, MAX_STEPS + 1):
+                messages = [
+                    {"role": "system", "content": "You are a coding assistant. Respond with the action to take."},
+                    {"role": "user", "content": task_prompt},
+                ]
 
-            if done:
-                success = reward >= 0.95
-                break
+                error = None
+                try:
+                    response = await client.chat.completions.create(
+                        model=MODEL_NAME,
+                        messages=messages,
+                    )
+                    action_text = response.choices[0].message.content or ""
+                except Exception as e:
+                    action_text = ""
+                    error = str(e)
+
+                try:
+                    result_state, reward, done = await env.step(action_text)
+                except Exception as e:
+                    reward = 0.0
+                    done = True
+                    error = str(e)
+
+                rewards.append(reward)
+                steps = i
+
+                log_step(step=i, action=task_name, reward=reward, done=done, error=error)
+
+                if done:
+                    success = reward >= 0.95
+                    break
+            
+            score = sum(rewards) / len(rewards) if rewards else 0.0
+            log_end(success=success, steps=steps, score=score, rewards=rewards)
     finally:
         env.close()
-        score = sum(rewards) / len(rewards) if rewards else 0.0
-        log_end(success=success, steps=steps, score=score, rewards=rewards)
 
 
 if __name__ == "__main__":
