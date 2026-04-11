@@ -22,6 +22,8 @@ class OpenEnvState:
     history: list = field(default_factory=list)
     total_reward: float = 0.0
     steps: int = 0
+    best_score: float = 0.0
+    last_submission: str = ""
 
 
 class OpenEnv:
@@ -66,6 +68,7 @@ class OpenEnv:
             "history": [],
             "total_reward": 0.0,
             "steps": 0,
+            "best_score": 0.0,
         }
 
     async def step(self, prompt: str) -> StepResponse:
@@ -85,9 +88,9 @@ class OpenEnv:
         # Build state vector from actual task features
         _DIFFICULTY_TO_COMPLEXITY = {"easy": "low", "medium": "medium", "hard": "high"}
         _TASK_TO_INTENT = {
-            "debug_off_by_one": "bug_fix",
-            "fix_race_condition": "bug_fix",
-            "implement_lru_cache": "feature",
+            "debug_memory_leak": "bug_fix",
+            "fix_retry_logic": "bug_fix",
+            "implement_circuit_breaker": "feature",
         }
         complexity = _DIFFICULTY_TO_COMPLEXITY.get(self.state.task_difficulty.lower(), "medium")
         intent = _TASK_TO_INTENT.get(self.state.task_name, "feature")
@@ -112,15 +115,42 @@ class OpenEnv:
             conversation_history=conversation_history,
         )
 
-        raw_reward = ctx.reward if ctx.reward else 0.0
+        current_task = self.task_bank.get_current()
+        step_budget = getattr(current_task, "step_budget", 20)
+
+        # 1. Evaluate actual grader scoring trajectory
+        grader_score = self.task_bank.grade(self.state.workspace)
+
+        # 2. Compute Improvement Reward Mapping
+        base_reward = grader_score - self.state.best_score
+        if base_reward < 0:
+            base_reward = 0.01
+
+        # 3. Apply early-solver efficiency bonus
+        efficiency_bonus = 0.0
+        if grader_score >= 0.95 and self.state.steps <= step_budget // 2:
+            efficiency_bonus = 0.1
+
+        reward_val = base_reward + efficiency_bonus
+        if reward_val > 0.99:
+            reward_val = 0.99
+
+        # Update environment tracking
+        self.state.best_score = max(self.state.best_score, grader_score)
+        self.state.total_reward += reward_val
         
-        self.state.total_reward += raw_reward
+        # 4. Multi-step 'done' conditions
+        is_stuck = (prompt == self.state.last_submission)
+        done = grader_score >= 0.95 or self.state.steps >= step_budget or is_stuck
+        
+        self.state.last_submission = prompt
+
         self.state.history.append({
             "type": "step",
             "step": self.state.steps,
             "prompt": prompt,
             "response": ctx.final_response[:500] if ctx.final_response else "",
-            "reward": raw_reward,
+            "reward": reward_val,
             "iisg_rate": ctx.iisg_pass_rate,
             "action": self.bandit.get_action_name(action_idx),
         })
@@ -128,25 +158,23 @@ class OpenEnv:
         self.state_encoder.save_history(ctx.iisg_pass_rate)
         
         new_state = self.state_encoder.encode("feature", "medium", prompt, self.state.workspace)
-        self.bandit.update(new_state.to_list(), action_idx, raw_reward)
-
-        done = self.state.steps >= 10 or raw_reward >= 0.95
+        self.bandit.update(new_state.to_list(), action_idx, reward_val)
 
         # Build token-efficiency score for the efficiency component
         token_budget = 3000
         tokens_used = getattr(ctx, "tokens_used", 0) or 0
-        efficiency = max(0.0, min(1.0, 1.0 - tokens_used / token_budget))
+        token_efficiency = max(0.0, min(1.0, 1.0 - tokens_used / token_budget))
 
         observation = Observation(**self._get_state_dict())
-        reward = Reward(
-            correctness=min(max(raw_reward, 0.0), 1.0),
-            efficiency=efficiency,
-            final_score=min(max(raw_reward, 0.0), 1.0),
+        reward_obj = Reward(
+            correctness=min(max(grader_score, 0.0), 1.0),
+            efficiency=token_efficiency,
+            final_score=min(max(reward_val, 0.0), 1.0),
         )
 
         return StepResponse(
             observation=observation,
-            reward=reward,
+            reward=reward_obj,
             done=done,
             info={"action": self.bandit.get_action_name(action_idx)},
         )
@@ -163,6 +191,7 @@ class OpenEnv:
             "history": self.state.history[-5:],
             "total_reward": round(self.state.total_reward, 4),
             "steps": self.state.steps,
+            "best_score": round(self.state.best_score, 4),
         }
 
     def get_state(self) -> dict:

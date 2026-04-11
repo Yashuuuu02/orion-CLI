@@ -14,6 +14,7 @@ class Task:
     setup_files: dict
     grader: callable
     seed: int = 42
+    step_budget: int = 20
 
 
 # ---------------------------------------------------------------------------
@@ -30,7 +31,7 @@ SAFED_BUILTINS['print'] = lambda *args, **kwargs: None  # Suppress output
 _ALLOWED_MODULES = {
     'collections', 'dataclasses', 'typing', 'math', 'functools',
     'itertools', 'heapq', 'bisect', 'copy', 'enum', 'abc',
-    'asyncio',
+    'asyncio', 'time',
 }
 
 def _restricted_import(name, *args, **kwargs):
@@ -60,12 +61,11 @@ def _safe_exec(code: str, path: str, extra_globals: dict | None = None) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Grader 1 – debug_off_by_one  (Medium)
+# Grader 1 – debug_memory_leak  (Medium)
 # ---------------------------------------------------------------------------
 
-def grade_debug_off_by_one(workspace: str) -> float:
-    """Grade the binary-search off-by-one fix."""
-    target_path = os.path.join(workspace, "search.py")
+def grade_debug_memory_leak(workspace: str) -> float:
+    target_path = os.path.join(workspace, "cache_manager.py")
     if not os.path.exists(target_path):
         return 0.01
 
@@ -75,201 +75,206 @@ def grade_debug_off_by_one(workspace: str) -> float:
     except SyntaxError:
         return 0.01
 
-    ns = _safe_exec(code, target_path)
+    import time
+    ns = _safe_exec(code, target_path, extra_globals={"time": time})
     if "_error" in ns:
         return 0.01
 
-    if "binary_search" not in ns:
-        return 0.01
-
-    fn = ns["binary_search"]
-
-    # Define test cases: (arr, target, expected_index)
-    test_cases = [
-        ([1, 2, 3, 4, 5], 5, 4),    # last element — the original bug
-        ([1, 2, 3], 1, 0),           # first element
-        ([1], 1, 0),                 # single-element array
-        ([1, 3, 5, 7, 9], 7, 3),     # middle element
-        ([2, 4, 6], 5, -1),          # element not present
-    ]
-
-    passed = 0
-    for arr, target, expected in test_cases:
-        try:
-            result = fn(arr, target)
-            if not isinstance(result, int):
-                continue
-            if result == expected:
-                passed += 1
-        except Exception:
-            # Function exists but throws — still counts as 0.1
-            pass
-
-    if passed == len(test_cases):
-        return 0.99
-    if passed >= 3:
-        return 0.7
-    if passed >= 1:
-        return 0.4
-    # Function exists but all tests fail or throw
-    return 0.1
-
-
-# ---------------------------------------------------------------------------
-# Grader 2 – fix_race_condition  (Hard)
-# ---------------------------------------------------------------------------
-
-def grade_fix_race_condition(workspace: str) -> float:
-    """Grade the asyncio race-condition fix."""
-    target_path = os.path.join(workspace, "async_counter.py")
-    if not os.path.exists(target_path):
-        return 0.01
-
-    try:
-        code = open(target_path).read()
-        compile(code, target_path, "exec")
-    except SyntaxError:
+    if "CacheManager" not in ns:
         return 0.1
 
-    # Check source text for locking primitives
-    has_lock = ("asyncio.Lock" in code or "asyncio.Semaphore" in code
-                or "Lock()" in code)
-
-    # Execute with asyncio available so the submitted code can import it
-    ns = _safe_exec(code, target_path, extra_globals={"asyncio": asyncio})
-    if "_error" in ns:
-        return 0.1
-
-    if "Counter" not in ns:
-        return 0.1
-
-    CounterClass = ns["Counter"]
-
-    # Concurrent correctness test
-    async def _concurrent_test() -> bool:
-        try:
-            counter = CounterClass()
-            tasks = [counter.increment() for _ in range(100)]
-            await asyncio.gather(*tasks)
-            return counter.value == 100
-        except Exception:
-            return False
+    CacheManager = ns["CacheManager"]
 
     try:
-        concurrent_ok = asyncio.get_event_loop().run_until_complete(_concurrent_test())
-    except RuntimeError:
-        # No running event loop — create a new one
-        concurrent_ok = asyncio.run(_concurrent_test())
+        c = CacheManager(ttl_seconds=60)
+        c.set("k1", "v1")
+        # Time travel: make entry artificially expired
+        c._cache["k1"]["ts"] = time.time() - 100
+        
+        # Test 1: get() returns None for expired entry
+        check_get_expiry = (c.get("k1") is None)
+        
+        # Test 2: cleanup() removes them
+        c.set("k2", "v2")
+        c._cache["k2"]["ts"] = time.time() - 100
+        c.cleanup()
+        check_cleanup = ("k2" not in getattr(c, "_cache", {}))
 
-    if has_lock and concurrent_ok:
-        return 0.99
-    if has_lock:
-        return 0.7
-    # increment exists but no lock
-    return 0.4
-
-
-# ---------------------------------------------------------------------------
-# Grader 3 – implement_lru_cache  (Hard)
-# ---------------------------------------------------------------------------
-
-def grade_implement_lru_cache(workspace: str) -> float:
-    """Grade the LRU cache implementation."""
-    target_path = os.path.join(workspace, "lru_cache.py")
-    if not os.path.exists(target_path):
-        return 0.01
-
-    try:
-        code = open(target_path).read()
-        compile(code, target_path, "exec")
-    except SyntaxError:
-        return 0.01
-
-    ns = _safe_exec(code, target_path)
-    if "_error" in ns:
-        return 0.01
-
-    if "LRUCache" not in ns:
-        return 0.01
-
-    CacheClass = ns["LRUCache"]
-
-    def _run_tests() -> int:
-        passed = 0
-
-        # Test 1: basic get/put
-        try:
-            c = CacheClass(2)
-            c.put(1, 10)
-            c.put(2, 20)
-            if c.get(1) == 10 and c.get(2) == 20:
-                passed += 1
-        except Exception:
-            pass
-
-        # Test 2: eviction
-        try:
-            c = CacheClass(2)
-            c.put(1, 10)
-            c.put(2, 20)
-            c.put(3, 30)  # evicts key 1
-            if c.get(1) == -1 and c.get(3) == 30:
-                passed += 1
-        except Exception:
-            pass
-
-        # Test 3: update existing key
-        try:
-            c = CacheClass(2)
-            c.put(1, 10)
-            c.put(2, 20)
-            c.put(1, 100)  # update, key 1 becomes most recent
-            c.put(3, 30)   # evicts key 2 (LRU), not key 1
-            if c.get(1) == 100 and c.get(2) == -1 and c.get(3) == 30:
-                passed += 1
-        except Exception:
-            pass
-
-        # Test 4: get refreshes recency
-        try:
-            c = CacheClass(2)
-            c.put(1, 10)
-            c.put(2, 20)
-            c.get(1)       # key 1 is now most recently used
-            c.put(3, 30)   # evicts key 2 (LRU)
-            if c.get(1) == 10 and c.get(2) == -1:
-                passed += 1
-        except Exception:
-            pass
-
-        # Test 5: capacity 1
-        try:
-            c = CacheClass(1)
-            c.put(1, 10)
-            c.put(2, 20)  # evicts key 1
-            if c.get(1) == -1 and c.get(2) == 20:
-                passed += 1
-        except Exception:
-            pass
-
-        return passed
-
-    try:
-        passed = _run_tests()
+        if check_get_expiry and check_cleanup:
+            return 0.99
+        if check_get_expiry and not check_cleanup:
+            return 0.75
+        if not check_get_expiry and check_cleanup:
+            return 0.5
+        return 0.25
     except Exception:
-        return 0.1
+        return 0.25
 
-    if passed == 5:
-        return 0.99
-    if passed == 4:
-        return 0.8
-    if passed == 3:
-        return 0.6
-    if passed == 2:
+
+# ---------------------------------------------------------------------------
+# Grader 2 – fix_retry_logic  (Hard)
+# ---------------------------------------------------------------------------
+
+def grade_fix_retry_logic(workspace: str) -> float:
+    target_path = os.path.join(workspace, "retry_utils.py")
+    if not os.path.exists(target_path):
+        return 0.01
+
+    try:
+        code = open(target_path).read()
+        compile(code, target_path, "exec")
+    except SyntaxError:
+        return 0.01
+
+    # Mock time.sleep to run quickly and track delays
+    class MockTime:
+        def __init__(self):
+            self.sleeps = []
+        def sleep(self, seconds):
+            self.sleeps.append(seconds)
+    mock_time = MockTime()
+
+    ns = _safe_exec(code, target_path, extra_globals={"time": mock_time})
+    if "_error" in ns:
+        return 0.01
+
+    if "retry" not in ns or "RetryableError" not in ns:
+        return 0.25
+
+    retry = ns["retry"]
+    RetryableError = ns["RetryableError"]
+
+    bugs_fixed = 0
+
+    # Test Bug 1: Delay should start at 1.0 (or default 1x)
+    try:
+        mock_time.sleeps.clear()
+        @retry(max_attempts=2, backoff=2.0)
+        def fail_fn():
+            raise RetryableError("fail")
+            
+        try: fail_fn()
+        except Exception: pass
+        
+        if len(mock_time.sleeps) > 0 and mock_time.sleeps[0] == 1.0:
+            bugs_fixed += 1
+    except Exception:
+        pass
+
+    # Test Bug 2: Catch only RetryableException (or allow original Exception to propagate immediately)
+    try:
+        calls = 0
+        @retry(max_attempts=3, backoff=2.0)
+        def fail_value():
+            nonlocal calls
+            calls += 1
+            raise ValueError("fail")
+            
+        try: fail_value()
+        except ValueError: pass
+        except Exception: pass
+            
+        if calls == 1:
+            bugs_fixed += 1
+    except Exception:
+        pass
+
+    # Test Bug 3: Re-raise original exception on max retries, not swallow to return None
+    try:
+        @retry(max_attempts=2, backoff=2.0)
+        def fail_retry():
+            raise RetryableError("max fail")
+            
+        raised = False
+        try:
+            res = fail_retry()
+        except RetryableError:
+            raised = True
+            
+        if raised:
+            bugs_fixed += 1
+    except Exception:
+        pass
+
+    if bugs_fixed == 3: return 0.99
+    if bugs_fixed == 2: return 0.75
+    if bugs_fixed == 1: return 0.5
+    return 0.25
+
+
+# ---------------------------------------------------------------------------
+# Grader 3 – implement_circuit_breaker  (Hard)
+# ---------------------------------------------------------------------------
+
+def grade_implement_circuit_breaker(workspace: str) -> float:
+    target_path = os.path.join(workspace, "circuit_breaker.py")
+    if not os.path.exists(target_path):
+        return 0.01
+
+    try:
+        code = open(target_path).read()
+        compile(code, target_path, "exec")
+    except SyntaxError:
+        return 0.01
+
+    import time
+    ns = _safe_exec(code, target_path, extra_globals={"time": time})
+    if "_error" in ns:
+        return 0.01
+
+    if "CircuitBreaker" not in ns:
         return 0.4
-    if passed == 1:
+
+    CircuitBreaker = ns["CircuitBreaker"]
+    CBOpen = ns.get("CircuitBreakerOpen", Exception)
+    if not hasattr(CircuitBreaker, "call"):
         return 0.2
-    return 0.1
+
+    score = 0.4
+    try:
+        cb = CircuitBreaker(failure_threshold=2, recovery_timeout=0.1)
+        
+        def succeed(): return "ok"
+        def fail(): raise ValueError("fail")
+
+        # Test 1: Initially closed, executes OK
+        r = cb.call(succeed)
+        if r == "ok":
+            score = 0.6
+
+        # Test 2: Transitions to OPEN after threshold failures
+        try: cb.call(fail) 
+        except Exception: pass
+        try: cb.call(fail)
+        except Exception: pass
+        
+        is_open = False
+        try:
+            cb.call(succeed)
+        except CBOpen:
+            is_open = True
+        except Exception:
+            is_open = True # Credit if they throw anything stopping execution 
+
+        if is_open:
+            score = 0.8
+            
+        # Test 3: Transitions to HALF_OPEN after timeout
+        time.sleep(0.15)
+        is_half_open = False
+        try:
+            r = cb.call(succeed)
+            if r == "ok":
+                is_half_open = True
+        except Exception:
+            pass
+
+        if is_open and is_half_open:
+            score = 0.99
+
+        return score
+    except Exception:
+        return score
 
 
 # ---------------------------------------------------------------------------
@@ -278,70 +283,92 @@ def grade_implement_lru_cache(workspace: str) -> float:
 
 TASKS = [
     Task(
-        name="debug_off_by_one",
+        name="debug_memory_leak",
         difficulty="Medium",
         prompt=(
-            "Fix the binary search implementation in search.py. "
-            "It has an off-by-one error that causes it to miss the last element "
-            "in the array. The function signature is: "
-            "def binary_search(arr, target) -> int"
+            "Fix the memory leak in cache_manager.py. The _cache dict "
+            "grows unbounded because expired entries are never evicted. "
+            "Add TTL-based expiration so entries older than ttl_seconds are "
+            "removed on access and during cleanup()."
         ),
         setup_files={
-            "search.py": (
-                "def binary_search(arr, target):\n"
-                "    left, right = 0, len(arr) - 2  # bug: should be len(arr) - 1\n"
-                "    while left <= right:\n"
-                "        mid = (left + right) // 2\n"
-                "        if arr[mid] == target:\n"
-                "            return mid\n"
-                "        elif arr[mid] < target:\n"
-                "            left = mid + 1\n"
-                "        else:\n"
-                "            right = mid - 1\n"
-                "    return -1\n"
+            "cache_manager.py": (
+                "import time\n"
+                "\n"
+                "class CacheManager:\n"
+                "    def __init__(self, ttl_seconds=60):\n"
+                "        self.ttl_seconds = ttl_seconds\n"
+                "        self._cache = {}\n"
+                "        \n"
+                "    def set(self, key, value):\n"
+                "        self._cache[key] = {\"value\": value, \"ts\": time.time()}\n"
+                "        \n"
+                "    def get(self, key):\n"
+                "        if key in self._cache:\n"
+                "            return self._cache[key][\"value\"]\n"
+                "        return None\n"
+                "        \n"
+                "    def cleanup(self):\n"
+                "        pass\n"
             ),
         },
-        grader=grade_debug_off_by_one,
+        grader=grade_debug_memory_leak,
         seed=42,
+        step_budget=15,
     ),
     Task(
-        name="fix_race_condition",
+        name="fix_retry_logic",
         difficulty="Hard",
         prompt=(
-            "Fix the race condition in async_counter.py. The increment() "
-            "method uses a read-modify-write pattern without locking, causing "
-            "incorrect counts under concurrent access. Fix it to use asyncio.Lock."
+            "Fix the retry decorator in retry_utils.py. It has three bugs:\n"
+            "1. It retries on ALL exceptions instead of only RetryableError\n"
+            "2. The backoff multiplier is applied before the first retry (should start at 1x)\n"
+            "3. It swallows the original exception — should re-raise after max retries"
         ),
         setup_files={
-            "async_counter.py": (
-                "import asyncio\n"
+            "retry_utils.py": (
+                "import time\n"
                 "\n"
-                "class Counter:\n"
-                "    def __init__(self):\n"
-                "        self.value = 0\n"
+                "class RetryableError(Exception): pass\n"
                 "\n"
-                "    async def increment(self):\n"
-                "        current = self.value      # race condition: read\n"
-                "        await asyncio.sleep(0)    # yield — another coroutine can run here\n"
-                "        self.value = current + 1  # write stale value\n"
+                "def retry(max_attempts=3, backoff=2.0):\n"
+                "    def decorator(func):\n"
+                "        def wrapper(*args, **kwargs):\n"
+                "            delay = backoff  # bug 1: should start at 1.0\n"
+                "            for attempt in range(max_attempts):\n"
+                "                try:\n"
+                "                    return func(*args, **kwargs)\n"
+                "                except Exception as e:  # bug 2: catches all exceptions\n"
+                "                    if attempt == max_attempts - 1:\n"
+                "                        return None  # bug 3: swallows exception\n"
+                "                    time.sleep(delay)\n"
+                "                    delay *= backoff\n"
+                "        return wrapper\n"
+                "    return decorator\n"
             ),
         },
-        grader=grade_fix_race_condition,
+        grader=grade_fix_retry_logic,
         seed=137,
+        step_budget=20,
     ),
     Task(
-        name="implement_lru_cache",
+        name="implement_circuit_breaker",
         difficulty="Hard",
         prompt=(
-            "Implement an LRU cache in lru_cache.py with these requirements:\n"
-            "- Class LRUCache(capacity: int)\n"
-            "- get(key) -> int: return value or -1 if not found\n"
-            "- put(key, value): insert or update, evict LRU if at capacity\n"
-            "Both operations must run in O(1) time."
+            "Implement a circuit breaker pattern in circuit_breaker.py.\n"
+            "Requirements:\n"
+            "- CircuitBreaker(failure_threshold=3, recovery_timeout=30)\n"
+            "- States: CLOSED (normal), OPEN (failing, reject calls), HALF_OPEN (testing)\n"
+            "- Transitions: CLOSED→OPEN after failure_threshold failures\n"
+            "- Transitions: OPEN→HALF_OPEN after recovery_timeout seconds\n"
+            "- Transitions: HALF_OPEN→CLOSED on success, HALF_OPEN→OPEN on failure\n"
+            "- call(func, *args) method that enforces the circuit state\n"
+            "- Raise CircuitBreakerOpen when circuit is OPEN"
         ),
         setup_files={},
-        grader=grade_implement_lru_cache,
+        grader=grade_implement_circuit_breaker,
         seed=999,
+        step_budget=25,
     ),
 ]
 

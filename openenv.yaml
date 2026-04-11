@@ -4,21 +4,21 @@ description: RL-optimised agentic coding assistant OpenEnv environment
 entrypoint: server.py
 
 tasks:
-  - name: debug_off_by_one
+  - name: debug_memory_leak
     difficulty: medium
-    description: Fix binary search off-by-one error that misses the last array element.
+    description: Fix the memory leak in cache_manager.py. The _cache dict grows unbounded because expired entries are never evicted.
     seed: 42
-    step_budget: 10
-  - name: fix_race_condition
+    step_budget: 15
+  - name: fix_retry_logic
     difficulty: hard
-    description: Fix async counter race condition by adding asyncio.Lock to read-modify-write pattern.
+    description: Fix the retry decorator in retry_utils.py. Contains bugs with exception filtering, initial backoff value, and swallowing original exceptions.
     seed: 137
     step_budget: 20
-  - name: implement_lru_cache
+  - name: implement_circuit_breaker
     difficulty: hard
-    description: Implement O(1) LRU cache with get(key) and put(key, value) supporting eviction.
+    description: Implement a circuit breaker pattern with CLOSED, OPEN, HALF_OPEN states and specific transition rules.
     seed: 999
-    step_budget: 20
+    step_budget: 25
 
 observation_space:
   task_name: str

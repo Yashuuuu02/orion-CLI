@@ -17,6 +17,7 @@ class Observation(BaseModel):
     history: list[dict] = Field(default_factory=list)
     total_reward: float = Field(default=0.0, ge=0.0)
     steps: int = Field(default=0, ge=0)
+    best_score: float = Field(default=0.0, ge=0.0)
 
 
 class StepAction(BaseModel):
