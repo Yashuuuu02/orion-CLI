@@ -456,6 +456,7 @@ class TaskBank:
     def get_by_name(self, name: str):
         for task in self.tasks:
             if task.name == name:
+                self.current_task = task
                 return task
         return None
 
