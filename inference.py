@@ -24,10 +24,13 @@ def log_step(step, action_text, reward, done, error):
     print(f"[STEP] step={step} action={action_str} reward={display_reward:.2f} done={str(done).lower()} error={error_val}", flush=True)
 
 
-def log_end(task, steps, rewards, success):
-    clamped_rewards = [min(max(float(r), 0.01), 0.99) for r in rewards]
-    rewards_str = ",".join(f"{r:.2f}" for r in clamped_rewards)
-    print(f"[END] success={str(success).lower()} steps={steps} rewards={rewards_str}", flush=True)
+def log_end(steps, rewards):
+    clamped = [min(max(float(r), 0.01), 0.99) for r in rewards]
+    score = sum(clamped) / len(clamped) if clamped else 0.01
+    score = min(max(score, 0.01), 0.99)
+    success_str = "true" if score >= 0.1 else "false"
+    rewards_str = ",".join(f"{r:.2f}" for r in clamped)
+    print(f"[END] success={success_str} steps={steps} score={score:.2f} rewards={rewards_str}", flush=True)
 
 
 def call_llm(client, messages):
@@ -103,7 +106,7 @@ async def main():
                         break
             finally:
                 # [END] is ALWAYS emitted, even if reset() or step() throws
-                log_end(task=task_name, steps=steps, rewards=rewards, success=success)
+                log_end(steps=steps, rewards=rewards)
     finally:
         env.close()
 
