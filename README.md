@@ -117,6 +117,8 @@ Each `step()` returns a `StepResponse` containing:
 | `0.50` | `add` exists but returns wrong result |
 | `0.99` | `add(2, 3) == 5` |
 
+**Scoring rationale:** 0.99 = objective achieved; 0.50 = correct structure but wrong semantics; 0.15 = parseable but missing function; 0.01 = floor to prevent zero reward signal to RL agent.
+
 ---
 
 ### `debug_memory_leak` · Medium · seed 42 · budget 15
@@ -131,6 +133,8 @@ Each `step()` returns a `StepResponse` containing:
 | `0.50` | `cleanup()` correctly removes expired entries |
 | `0.75` | `get()` correctly returns `None` for expired entries |
 | `0.99` | Full TTL lifecycle — both `get()` expiry and `cleanup()` removal |
+
+**Scoring rationale:** get() and cleanup() are scored independently (0.75 and 0.50) because they are orthogonal fixes — an agent fixing one method still demonstrates partial TTL understanding. Both required for 0.99 because either path alone still leaks.
 
 ---
 
@@ -149,6 +153,8 @@ Each `step()` returns a `StepResponse` containing:
 | `0.75` | 2 bugs fixed |
 | `0.99` | All 3 bugs fixed |
 
+**Scoring rationale:** Linear partial credit per bug fixed (0.50/0.75/0.99) because the 3 bugs are independent — any ordering of fixes is valid. Each bug fixed demonstrates a distinct debugging skill.
+
 ---
 
 ### `implement_circuit_breaker` · Hard · seed 999 · budget 25
@@ -163,6 +169,14 @@ Each `step()` returns a `StepResponse` containing:
 | `0.60` | CLOSED state handles successful calls |
 | `0.80` | Transitions to OPEN after `failure_threshold` failures |
 | `0.99` | Transitions to HALF_OPEN after `recovery_timeout`, recovers on success |
+
+**Scoring rationale:** Tiers follow state machine implementation depth — instantiation (0.40) → happy path (0.60) → failure detection (0.80) → full recovery path (0.99). Each tier is a meaningful checkpoint in implementing a correct state machine.
+
+---
+
+## Reward Design Philosophy
+
+OrionCLI uses improvement-based delta rewards (`grader_score - best_score`) instead of absolute scores to ensure that agents are rewarded only for progress, preventing models from "hacks" that repeat high-scoring states without further discovery. We clamp rewards to the `(0.01, 0.99)` range to maintain a non-zero gradient for RL training and avoid numerical instability at the limits of the sigmoid/logistic space. An efficiency bonus exists to steer the agent towards the shortest path to completion, rewarding optimal tool usage. Together, these design choices create a dense, informative signal that allows the LinUCB bandit to convergence on optimal pipeline actions across varying task difficulties.
 
 ---
 
