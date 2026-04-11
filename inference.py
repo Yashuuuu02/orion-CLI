@@ -51,7 +51,7 @@ async def main():
     )
 
     try:
-        for target_task in ["easy_add", "medium_fix", "hard_refactor"]:
+        for target_task in ["debug_off_by_one", "fix_race_condition", "implement_lru_cache"]:
             task_name = target_task
             task_prompt = ""
             rewards = []
@@ -84,7 +84,9 @@ async def main():
                         error = str(e)
 
                     try:
-                        result_state, reward, done = await env.step(action_text)
+                        step_result = await env.step(action_text)
+                        reward = step_result.reward.final_score
+                        done = step_result.done
                     except Exception as e:
                         reward = 0.0
                         done = True

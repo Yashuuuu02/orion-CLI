@@ -9,7 +9,8 @@ Or via uvicorn:
 """
 
 import os
-from contextlib import asynccontextmanager
+import uuid
+from collections import OrderedDict
 from typing import Optional
 
 from fastapi import FastAPI
@@ -17,36 +18,29 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from env import OpenEnv
+from app.models import Observation, StepAction, Reward, StepResponse
 
 
 # ---------------------------------------------------------------------------
-# Request / Response models
+# Session management (LRU dict, not a single global instance)
+# ---------------------------------------------------------------------------
+
+_sessions: OrderedDict[str, OpenEnv] = OrderedDict()
+MAX_SESSIONS = int(os.getenv("MAX_SESSIONS", "512"))
+
+
+# ---------------------------------------------------------------------------
+# Request models
 # ---------------------------------------------------------------------------
 
 class ResetRequest(BaseModel):
     difficulty: Optional[str] = None
+    session_id: Optional[str] = None
 
 
 class StepRequest(BaseModel):
     prompt: str
-
-
-# ---------------------------------------------------------------------------
-# Lifespan – create / tear-down the global env instance
-# ---------------------------------------------------------------------------
-
-_env: Optional[OpenEnv] = None
-
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    global _env
-    api_key = os.environ.get("NVIDIA_NIM_API_KEY", "")
-    _env = OpenEnv(api_key=api_key)
-    yield
-    if _env is not None:
-        _env.close()
-        _env = None
+    session_id: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -56,7 +50,6 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Orion OpenEnv Server",
     version="1.0.0",
-    lifespan=lifespan,
 )
 
 
@@ -73,12 +66,17 @@ async def health():
 @app.post("/reset")
 async def reset(body: Optional[ResetRequest] = None):
     """Reset the environment and return the initial observation."""
-    if _env is None:
-        return JSONResponse(status_code=503, content={"error": "Environment not initialized"})
+    session_id = (body.session_id if body else None) or str(uuid.uuid4())
+    # Evict oldest session if at capacity
+    if len(_sessions) >= MAX_SESSIONS:
+        _, old_env = _sessions.popitem(last=False)
+        old_env.close()
+    api_key = os.environ.get("NVIDIA_NIM_API_KEY", "")
+    env = OpenEnv(api_key=api_key)
+    _sessions[session_id] = env
     try:
-        difficulty = body.difficulty if body else None
-        observation = await _env.reset(difficulty)
-        return observation
+        obs_dict = await env.reset(body.difficulty if body else None)
+        return {"session_id": session_id, **obs_dict}
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
 
@@ -86,23 +84,31 @@ async def reset(body: Optional[ResetRequest] = None):
 @app.post("/step")
 async def step(body: StepRequest):
     """Execute one step in the environment."""
-    if _env is None:
-        return JSONResponse(status_code=503, content={"error": "Environment not initialized"})
+    if body.session_id and body.session_id in _sessions:
+        env = _sessions[body.session_id]
+    elif _sessions:
+        env = next(iter(_sessions.values()))
+    else:
+        return JSONResponse(status_code=404,
+            content={"error": "No active session. Call /reset first."})
     try:
-        state, reward, done = await _env.step(body.prompt)
-        return {
-            "observation": state,
-            "reward": reward,
-            "done": done,
-        }
+        result = await env.step(body.prompt)
+        return result
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
 
 
 @app.get("/state")
-async def state():
+async def state(session_id: Optional[str] = None):
     """Return the current environment state dict."""
-    return _env.get_state()
+    if session_id and session_id in _sessions:
+        env = _sessions[session_id]
+    elif _sessions:
+        env = next(iter(_sessions.values()))
+    else:
+        return JSONResponse(status_code=404,
+            content={"error": "No active session"})
+    return env.get_state()
 
 
 @app.get("/tasks")
@@ -118,6 +124,63 @@ async def get_openenv_yaml():
     from fastapi.responses import FileResponse
     return FileResponse("openenv.yaml", media_type="text/plain")
 
+
+@app.get("/metadata")
+async def metadata():
+    """Return environment metadata."""
+    from tasks.task_bank import TASKS
+    return {
+        "name": "orion-cli",
+        "version": "1.0.0",
+        "description": "RL-optimised agentic coding assistant OpenEnv environment",
+        "tasks": [t.name for t in TASKS],
+        "action_schema": {"prompt": "str"},
+        "observation_fields": [
+            "task_name", "task_difficulty", "task_prompt",
+            "workspace", "history", "total_reward", "steps",
+        ],
+    }
+
+
+@app.get("/schema")
+async def schema():
+    """Return JSON schemas for the core Action, Observation, and Reward models."""
+    return {
+        "action": StepAction.model_json_schema(),
+        "observation": Observation.model_json_schema(),
+        "reward": Reward.model_json_schema(),
+    }
+
+
+class GraderRequest(BaseModel):
+    task_name: str
+    workspace: str
+
+
+@app.post("/grader")
+async def grader(body: GraderRequest):
+    """Re-run a task grader on an existing workspace for trajectory replay."""
+    from tasks.task_bank import TASKS
+    task_map = {t.name: t for t in TASKS}
+    if body.task_name not in task_map:
+        return JSONResponse(status_code=404,
+            content={"error": f"Unknown task: {body.task_name}"})
+    try:
+        score = task_map[body.task_name].grader(body.workspace)
+        return {"score": score, "task_name": body.task_name}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+
+@app.post("/baseline")
+async def baseline():
+    """Return baseline information."""
+    from tasks.task_bank import TASKS
+    return {
+        "status": "baseline not configured",
+        "tasks": [t.name for t in TASKS],
+        "note": "run inference.py for baseline scores",
+    }
 
 # ---------------------------------------------------------------------------
 # Entry-point

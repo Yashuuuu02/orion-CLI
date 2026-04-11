@@ -10,6 +10,7 @@ from orion.pipeline.runner import PipelineRunner
 from orion.provider.provider import Provider
 from orion.tool.tools import ReadTool, WriteTool, EditTool, GrepTool
 from tasks.task_bank import TaskBank, get_task_bank
+from app.models import Observation, Reward, StepResponse
 
 
 @dataclass
@@ -67,7 +68,7 @@ class OpenEnv:
             "steps": 0,
         }
 
-    async def step(self, prompt: str) -> tuple[dict, float, bool]:
+    async def step(self, prompt: str) -> StepResponse:
         if not self.state:
             raise RuntimeError("Environment not initialized. Call reset() first.")
 
@@ -81,7 +82,25 @@ class OpenEnv:
 
         conversation_history = [{"role": "user", "content": prompt}]
 
-        action_idx = self.bandit.select([0, 1, 0, 0.5])
+        # Build state vector from actual task features
+        _DIFFICULTY_TO_COMPLEXITY = {"easy": "low", "medium": "medium", "hard": "high"}
+        _TASK_TO_INTENT = {
+            "debug_off_by_one": "bug_fix",
+            "fix_race_condition": "bug_fix",
+            "implement_lru_cache": "feature",
+        }
+        complexity = _DIFFICULTY_TO_COMPLEXITY.get(self.state.task_difficulty.lower(), "medium")
+        intent = _TASK_TO_INTENT.get(self.state.task_name, "feature")
+        past_iisg = self.state.total_reward / max(self.state.steps, 1)
+        self.state_encoder.save_history(past_iisg)
+
+        state_vec = self.state_encoder.encode(
+            intent_type=intent,
+            complexity=complexity,
+            prompt=prompt,
+            cwd=self.state.workspace,
+        )
+        action_idx = self.bandit.select(state_vec.to_list())
         action = self.bandit.get_action(action_idx)
         pipeline_action = action_to_pipeline(action)
 
@@ -93,15 +112,15 @@ class OpenEnv:
             conversation_history=conversation_history,
         )
 
-        reward = ctx.reward if ctx.reward else 0.0
+        raw_reward = ctx.reward if ctx.reward else 0.0
         
-        self.state.total_reward += reward
+        self.state.total_reward += raw_reward
         self.state.history.append({
             "type": "step",
             "step": self.state.steps,
             "prompt": prompt,
             "response": ctx.final_response[:500] if ctx.final_response else "",
-            "reward": reward,
+            "reward": raw_reward,
             "iisg_rate": ctx.iisg_pass_rate,
             "action": self.bandit.get_action_name(action_idx),
         })
@@ -109,11 +128,28 @@ class OpenEnv:
         self.state_encoder.save_history(ctx.iisg_pass_rate)
         
         new_state = self.state_encoder.encode("feature", "medium", prompt, self.state.workspace)
-        self.bandit.update(new_state.to_list(), action_idx, reward)
+        self.bandit.update(new_state.to_list(), action_idx, raw_reward)
 
-        done = self.state.steps >= 10 or reward >= 0.95
+        done = self.state.steps >= 10 or raw_reward >= 0.95
 
-        return self._get_state_dict(), reward, done
+        # Build token-efficiency score for the efficiency component
+        token_budget = 3000
+        tokens_used = getattr(ctx, "tokens_used", 0) or 0
+        efficiency = max(0.0, min(1.0, 1.0 - tokens_used / token_budget))
+
+        observation = Observation(**self._get_state_dict())
+        reward = Reward(
+            correctness=min(max(raw_reward, 0.0), 1.0),
+            efficiency=efficiency,
+            final_score=min(max(raw_reward, 0.0), 1.0),
+        )
+
+        return StepResponse(
+            observation=observation,
+            reward=reward,
+            done=done,
+            info={"action": self.bandit.get_action_name(action_idx)},
+        )
 
     def _get_state_dict(self) -> dict:
         if not self.state:
@@ -158,7 +194,7 @@ async def reset(difficulty: Optional[str] = None) -> dict:
     return await env.reset(difficulty)
 
 
-async def step(prompt: str) -> tuple[dict, float, bool]:
+async def step(prompt: str) -> StepResponse:
     env = get_env(os.environ.get("NVIDIA_NIM_API_KEY", ""))
     return await env.step(prompt)
 

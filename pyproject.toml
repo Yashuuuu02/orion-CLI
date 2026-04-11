@@ -27,4 +27,4 @@ server = "server.app:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["orion*", "tasks*"]
+include = ["orion*", "tasks*", "app*"]

@@ -4,15 +4,21 @@ description: RL-optimised agentic coding assistant OpenEnv environment
 entrypoint: server.py
 
 tasks:
-  - name: easy_add
-    difficulty: easy
-    description: Write a Python function called add(a, b) that returns the sum of a and b.
-  - name: medium_fix
+  - name: debug_off_by_one
     difficulty: medium
-    description: Fix the buggy.py file where add() returns None instead of a + b.
-  - name: hard_refactor
+    description: Fix binary search off-by-one error that misses the last array element.
+    seed: 42
+    step_budget: 10
+  - name: fix_race_condition
     difficulty: hard
-    description: Refactor monolith.py into three functions parse_input, process_data, format_output.
+    description: Fix async counter race condition by adding asyncio.Lock to read-modify-write pattern.
+    seed: 137
+    step_budget: 20
+  - name: implement_lru_cache
+    difficulty: hard
+    description: Implement O(1) LRU cache with get(key) and put(key, value) supporting eviction.
+    seed: 999
+    step_budget: 20
 
 observation_space:
   task_name: str
@@ -26,7 +32,13 @@ observation_space:
 action_space:
   prompt: str
 
+observation_model: app.models.Observation
+action_model: app.models.StepAction
+reward_model: app.models.Reward
+
 endpoints:
   reset: POST /reset
   step: POST /step
   state: GET /state
+  grader: POST /grader
+  baseline: POST /baseline
