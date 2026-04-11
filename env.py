@@ -77,130 +77,160 @@ class OpenEnv:
             "best_score": 0.01,
         }
 
-    async def step(self, prompt: str) -> StepResponse:
+    async def step(self, action: dict | str) -> StepResponse:
+        """Execute a tool action and return the result."""
         if not self.state:
             raise RuntimeError("Environment not initialized. Call reset() first.")
-
-        self.state.steps += 1
-
-        def on_stage(msg: str):
-            self.state.history.append({"type": "stage", "message": msg})
-
-        def on_token_delta(chunk: str):
-            pass
-
-        conversation_history = [{"role": "user", "content": prompt}]
-
-        # Build state vector from actual task features
-        _DIFFICULTY_TO_COMPLEXITY = {"easy": "low", "medium": "medium", "hard": "high"}
-        _TASK_TO_INTENT = {
-            "debug_memory_leak": "bug_fix",
-            "fix_retry_logic": "bug_fix",
-            "implement_circuit_breaker": "feature",
-        }
-        complexity = _DIFFICULTY_TO_COMPLEXITY.get(self.state.task_difficulty.lower(), "medium")
-        intent = _TASK_TO_INTENT.get(self.state.task_name, "feature")
-        past_iisg = self.state.total_reward / max(self.state.steps, 1)
-        self.state_encoder.save_history(past_iisg)
-
-        state_vec = self.state_encoder.encode(
-            intent_type=intent,
-            complexity=complexity,
-            prompt=prompt,
-            cwd=self.state.workspace,
-        )
-        action_idx = self.bandit.select(state_vec.to_list())
-        action = self.bandit.get_action(action_idx)
-        pipeline_action = action_to_pipeline(action)
-
-        ctx = await self.runner.run(
-            prompt=prompt,
-            action=pipeline_action,
-            on_stage=on_stage,
-            on_token_delta=on_token_delta,
-            conversation_history=conversation_history,
-        )
-
-        current_task = self.task_bank.get_current()
-        step_budget = getattr(current_task, "step_budget", 20)
-
-        # 1. Evaluate actual grader scoring trajectory
-        grader_score = self.task_bank.grade(self.state.workspace)
-        grader_score = min(max(float(grader_score), 0.01), 0.99)
-
-        # Apply penalties BEFORE the improvement-based reward delta calculation
-        # 1. Empty submission penalty
-        if not prompt.strip():
-            grader_score = 0.01
             
-        # 2. Syntax error penalty
-        try:
-            compile(prompt, "<agent>", "exec")
-        except SyntaxError:
-            grader_score = min(grader_score, 0.15)
+        if isinstance(action, str):
+            action = {
+                "action_type": "write_file",
+                "path": "solution.py",
+                "content": action
+            }
 
-        # 3. Repeated submission penalty
-        if prompt.strip() == self.state.last_submission.strip():
-            grader_score = max(0.01, grader_score - 0.05)
+        action_type = action.get("action_type", "")
+        tool_response = None
+        grader_score = self.state.best_score
+        done = False
+        
+        # Route to correct tool handler
+        if action_type == "read_file":
+            path = action.get("path", "")
+            full_path = os.path.join(self.state.workspace, path)
+            if os.path.exists(full_path):
+                content = open(full_path).read()
+                tool_response = ToolResponse(
+                    action_type="read_file",
+                    result=content[:3000],  # cap at 3000 chars
+                    success=True
+                )
+            else:
+                tool_response = ToolResponse(
+                    action_type="read_file",
+                    result=f"File not found: {path}",
+                    success=False
+                )
+            # No grader call on read — reward comes from progress
+            reward_val = 0.01
+            
+        elif action_type == "write_file":
+            path = action.get("path", "")
+            content = action.get("content", "")
+            full_path = os.path.join(self.state.workspace, path)
+            try:
+                os.makedirs(os.path.dirname(full_path), exist_ok=True)
+                with open(full_path, "w") as f:
+                    f.write(content)
+                tool_response = ToolResponse(
+                    action_type="write_file",
+                    result=f"Written {len(content)} bytes to {path}",
+                    success=True
+                )
+                # Run grader after write to check progress
+                grader_score = self.task_bank.grade(self.state.workspace)
+                grader_score = min(max(float(grader_score), 0.01), 0.99)
+            except Exception as e:
+                tool_response = ToolResponse(
+                    action_type="write_file",
+                    result=f"Write failed: {str(e)}",
+                    success=False
+                )
+                grader_score = 0.01
+                
+        elif action_type == "run_tests":
+            grader_score = self.task_bank.grade(self.state.workspace)
+            grader_score = min(max(float(grader_score), 0.01), 0.99)
+            tool_response = ToolResponse(
+                action_type="run_tests",
+                result=f"Test score: {grader_score:.2f}. "
+                       f"Best so far: {self.state.best_score:.2f}",
+                success=True
+            )
+            reward_val = 0.01  # minimal reward for just running tests
+            
+        elif action_type == "list_files":
+            files = os.listdir(self.state.workspace)
+            tool_response = ToolResponse(
+                action_type="list_files",
+                result="\n".join(files) if files else "Empty workspace",
+                success=True
+            )
+            reward_val = 0.01
+            
+        elif action_type == "submit":
+            grader_score = self.task_bank.grade(self.state.workspace)
+            grader_score = min(max(float(grader_score), 0.01), 0.99)
+            tool_response = ToolResponse(
+                action_type="submit",
+                result=f"Submitted. Final score: {grader_score:.2f}",
+                success=True
+            )
+            done = True
+        else:
+            tool_response = ToolResponse(
+                action_type="unknown",
+                result=f"Unknown action: {action_type}",
+                success=False
+            )
+            grader_score = 0.01
 
-        # 2. Compute Improvement Reward Mapping
-        base_reward = grader_score - self.state.best_score
-        if base_reward <= 0.0:
-            base_reward = 0.01
-
-        # 3. Apply early-solver efficiency bonus
-        efficiency_bonus = 0.01
-        if grader_score >= 0.95 and self.state.steps <= step_budget // 2:
-            efficiency_bonus = 0.1
-
-        reward_val = base_reward + efficiency_bonus
-        if reward_val > 0.99:
-            reward_val = 0.99
-        reward_val = max(0.01, reward_val)
-
-        # Update environment tracking
+        # Compute improvement-based reward for write and submit
+        if action_type in ("write_file", "submit"):
+            base_reward = grader_score - self.state.best_score
+            if base_reward <= 0.0:
+                base_reward = 0.01
+            efficiency_bonus = 0.01
+            if grader_score >= 0.95 and self.state.steps <= self.task_bank.current_task.step_budget // 2:
+                efficiency_bonus = 0.1
+            reward_val = min(max(base_reward + efficiency_bonus, 0.01), 0.99)
+        
+        # Update state
+        self.state.steps += 1
         self.state.best_score = max(self.state.best_score, grader_score)
         self.state.total_reward += reward_val
-        
-        # 4. Multi-step 'done' conditions
-        is_stuck = (prompt == self.state.last_submission)
-        done = grader_score >= 0.95 or self.state.steps >= step_budget or is_stuck
-        
-        self.state.last_submission = prompt
-
         self.state.history.append({
-            "type": "step",
             "step": self.state.steps,
-            "prompt": prompt,
-            "response": ctx.final_response[:500] if ctx.final_response else "",
-            "reward": reward_val,
-            "iisg_rate": ctx.iisg_pass_rate,
-            "action": self.bandit.get_action_name(action_idx),
+            "action_type": action_type,
+            "tool_result": tool_response.result[:200],
+            "reward": reward_val
         })
-
-        self.state_encoder.save_history(ctx.iisg_pass_rate)
         
-        new_state = self.state_encoder.encode("feature", "medium", prompt, self.state.workspace)
-        self.bandit.update(new_state.to_list(), action_idx, reward_val)
-        self.bandit.save()
-
-        # Build token-efficiency score for the efficiency component
-        token_budget = 3000
-        tokens_used = getattr(ctx, "tokens_used", 0) or 0
-        token_efficiency = max(0.01, min(0.99, 1.0 - tokens_used / token_budget))
-
-        observation = Observation(**self._get_state_dict())
+        # Check done conditions
+        if self.state.steps >= self.task_bank.current_task.step_budget:
+            done = True
+        if grader_score >= 0.95:
+            done = True
+        
+        # Build response
         reward_obj = Reward(
             correctness=min(max(grader_score, 0.01), 0.99),
-            efficiency=token_efficiency,
-            final_score=min(max(reward_val, 0.01), 0.99),
+            efficiency=min(max(1.0 - self.state.steps / 
+                        self.task_bank.current_task.step_budget, 0.01), 0.99),
+            final_score=min(max(reward_val, 0.01), 0.99)
         )
-
+        
+        obs = Observation(
+            task_name=self.state.task_name,
+            task_difficulty=self.state.task_difficulty,
+            task_prompt=self.state.task_prompt,
+            workspace=self.state.workspace,
+            history=self.state.history[-5:],
+            total_reward=self.state.total_reward,
+            steps=self.state.steps,
+            best_score=self.state.best_score,
+            available_tools=["read_file", "write_file", 
+                            "run_tests", "list_files", "submit"],
+            last_tool_result=tool_response.result[:500],
+            files_in_workspace=os.listdir(self.state.workspace)
+        )
+        
         return StepResponse(
-            observation=observation,
+            observation=obs,
             reward=reward_obj,
             done=done,
-            info={"action": self.bandit.get_action_name(action_idx)},
+            tool_response=tool_response,
+            info={"action_type": action_type}
         )
 
     def _get_state_dict(self) -> dict:

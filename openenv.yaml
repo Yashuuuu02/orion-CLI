@@ -38,7 +38,7 @@ action_space:
   prompt: str
 
 observation_model: app.models.Observation
-action_model: app.models.StepAction
+action_model: app.models.Action
 reward_model: app.models.Reward
 
 endpoints:
@@ -47,3 +47,15 @@ endpoints:
   state: GET /state
   grader: POST /grader
   baseline: POST /baseline
+
+tools:
+  - name: read_file
+    description: Read a file from the workspace
+  - name: write_file  
+    description: Write code to a file
+  - name: run_tests
+    description: Run grader tests
+  - name: list_files
+    description: List workspace files
+  - name: submit
+    description: Submit final solution

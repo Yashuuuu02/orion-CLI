@@ -40,7 +40,8 @@ class ResetRequest(BaseModel):
 
 
 class StepRequest(BaseModel):
-    prompt: str
+    action: Optional[dict] = None
+    prompt: Optional[str] = None
     session_id: Optional[str] = None
 
 
@@ -94,7 +95,10 @@ async def step(body: StepRequest):
         return JSONResponse(status_code=404,
             content={"error": "No active session. Call /reset first."})
     try:
-        result = await env.step(body.prompt)
+        action_payload = body.action if body.action is not None else body.prompt
+        if action_payload is None:
+            return JSONResponse(status_code=400, content={"error": "Must provide action or prompt"})
+        result = await env.step(action_payload)
         return result
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})

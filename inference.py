@@ -87,7 +87,22 @@ async def main():
 
                     for i in range(1, MAX_STEPS + 1):
                         messages = [
-                            {"role": "system", "content": "You are a coding assistant. Respond with the action to take."},
+                            {"role": "system", "content": """You are a coding agent with these tools:
+- read_file: {"action_type": "read_file", "path": "filename.py"}
+- write_file: {"action_type": "write_file", "path": "file.py", "content": "..."}
+- run_tests: {"action_type": "run_tests"}
+- list_files: {"action_type": "list_files"}
+- submit: {"action_type": "submit", "explanation": "what I fixed"}
+
+Strategy:
+1. First call list_files to see what's in the workspace
+2. Call read_file on the target file to understand the bug
+3. Call write_file with your fix
+4. Call run_tests to verify
+5. Call submit when score >= 0.95
+
+Respond with ONLY a valid JSON object matching one action.
+No explanation, no markdown, just the JSON."""},
                             {"role": "user", "content": task_prompt},
                         ]
 
@@ -98,8 +113,20 @@ async def main():
                             action_text = ""
                             error = str(e)
 
+                        # Parse LLM response as JSON action
                         try:
-                            step_result = await env.step(action_text)
+                            import json
+                            action = json.loads(action_text)
+                        except json.JSONDecodeError:
+                            # fallback: treat as write_file to main task file
+                            action = {
+                                "action_type": "write_file",
+                                "path": "solution.py", 
+                                "content": action_text
+                            }
+
+                        try:
+                            step_result = await env.step(action)
                             reward = step_result.reward.final_score
                             done = step_result.done
                         except Exception as e:
@@ -110,7 +137,8 @@ async def main():
                         rewards.append(reward)
                         steps = i
 
-                        log_step(step=i, action_text=action_text, reward=reward, done=done, error=error)
+                        action_display = action.get("action_type", "unknown")[:80]
+                        log_step(step=i, action_text=action_display, reward=reward, done=done, error=error)
 
                         if done:
                             success = reward >= 0.95
