@@ -45,6 +45,8 @@ class LinUCBBandit:
         self.weights = {}
         self.counts = {}
         self.total_count = 0
+        self.A = np.eye(self.n_features)  # covariance matrix
+        self.b = np.zeros(self.n_features)  # reward vector
         self._load()
 
     def _load(self) -> None:
@@ -130,7 +132,7 @@ class LinUCBBandit:
         self._save()
 
     def save(self, path="/app/bandit_weights.npz"):
-        np.savez(path, A=self.A, b=self.b, counts=list(self.counts.values()))
+        np.savez(path, A=self.A, b=self.b, counts=np.array(list(self.counts.values())))
 
     def load(self, path="/app/bandit_weights.npz"):
         if os.path.exists(path):

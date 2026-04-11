@@ -4,6 +4,7 @@ import os
 import random
 import asyncio
 import builtins
+import concurrent.futures
 
 
 @dataclass
@@ -54,7 +55,12 @@ def _safe_exec(code: str, path: str, extra_globals: dict | None = None) -> dict:
 
     try:
         compiled = compile(code, path, 'exec')
-        exec(compiled, namespace)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(exec, compiled, namespace)
+            try:
+                future.result(timeout=5)
+            except concurrent.futures.TimeoutError:
+                raise TimeoutError("Code execution timed out")
         return namespace
     except Exception as e:
         return {"_error": str(e)}
@@ -223,7 +229,7 @@ def grade_implement_circuit_breaker(workspace: str) -> float:
         return 0.01
 
     if "CircuitBreaker" not in ns:
-        return 0.4
+        return 0.01
 
     CircuitBreaker = ns["CircuitBreaker"]
     CBOpen = ns.get("CircuitBreakerOpen", Exception)
