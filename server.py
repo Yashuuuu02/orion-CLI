@@ -168,8 +168,9 @@ async def grader(body: GraderRequest):
         return JSONResponse(status_code=404,
             content={"error": f"Unknown task: {body.task_name}"})
     try:
-        score = task_map[body.task_name].grader(body.workspace)
-        return {"score": score, "task_name": body.task_name}
+        raw_score = task_map[body.task_name].grader(body.workspace)
+        clamped_score = min(max(float(raw_score), 0.01), 0.99)
+        return {"score": clamped_score, "task_name": body.task_name}
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
 

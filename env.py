@@ -125,10 +125,11 @@ class OpenEnv:
 
         # 1. Evaluate actual grader scoring trajectory
         grader_score = self.task_bank.grade(self.state.workspace)
+        grader_score = min(max(float(grader_score), 0.01), 0.99)
 
         # 2. Compute Improvement Reward Mapping
         base_reward = grader_score - self.state.best_score
-        if base_reward < 0:
+        if base_reward <= 0.0:
             base_reward = 0.01
 
         # 3. Apply early-solver efficiency bonus
