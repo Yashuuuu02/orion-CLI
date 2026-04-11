@@ -134,6 +134,13 @@ No explanation, no markdown, just the JSON."""},
                             done = True
                             error = str(e)
 
+                        # Update bandit with real episode reward
+                        try:
+                            if hasattr(env, 'bandit') and hasattr(env, 'state_encoder'):
+                                env.bandit.save()
+                        except Exception:
+                            pass
+
                         rewards.append(reward)
                         steps = i
 
