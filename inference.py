@@ -28,7 +28,8 @@ def log_step(step, action_text, reward, done, error):
 def log_end(task, steps, rewards):
     score = sum(rewards) / len(rewards) if rewards else 0.0
     success_str = "true" if score >= 0.1 else "false"
-    rewards_str = ",".join(f"{r:.2f}" for r in rewards)
+    clamped = [min(max(r, 0.01), 0.99) for r in rewards]
+    rewards_str = ",".join(f"{r:.2f}" for r in clamped)
     print(f"[END] success={success_str} steps={steps} rewards={rewards_str}", flush=True)
 
 

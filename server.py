@@ -34,6 +34,7 @@ MAX_SESSIONS = int(os.getenv("MAX_SESSIONS", "512"))
 # ---------------------------------------------------------------------------
 
 class ResetRequest(BaseModel):
+    task_name: Optional[str] = None
     difficulty: Optional[str] = None
     session_id: Optional[str] = None
 
@@ -75,7 +76,8 @@ async def reset(body: Optional[ResetRequest] = None):
     env = OpenEnv(api_key=api_key)
     _sessions[session_id] = env
     try:
-        obs_dict = await env.reset(body.difficulty if body else None)
+        obs_dict = await env.reset(task_name=body.task_name if body else None, 
+                                   difficulty=body.difficulty if body else None)
         return {"session_id": session_id, **obs_dict}
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
