@@ -4,6 +4,11 @@ description: RL-optimised agentic coding assistant OpenEnv environment
 entrypoint: server.py
 
 tasks:
+  - name: fix_syntax_error
+    difficulty: easy
+    description: Fix the syntax error in broken.py. The file contains a function with a missing colon after the def statement. The function should be named add(a, b) and return a + b.
+    seed: 7
+    step_budget: 5
   - name: debug_memory_leak
     difficulty: medium
     description: Fix the memory leak in cache_manager.py. The _cache dict grows unbounded because expired entries are never evicted.

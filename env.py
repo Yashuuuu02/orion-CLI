@@ -128,6 +128,21 @@ class OpenEnv:
         grader_score = self.task_bank.grade(self.state.workspace)
         grader_score = min(max(float(grader_score), 0.01), 0.99)
 
+        # Apply penalties BEFORE the improvement-based reward delta calculation
+        # 1. Empty submission penalty
+        if not prompt.strip():
+            grader_score = 0.01
+            
+        # 2. Syntax error penalty
+        try:
+            compile(prompt, "<agent>", "exec")
+        except SyntaxError:
+            grader_score = min(grader_score, 0.15)
+
+        # 3. Repeated submission penalty
+        if prompt.strip() == self.state.last_submission.strip():
+            grader_score = max(0.01, grader_score - 0.05)
+
         # 2. Compute Improvement Reward Mapping
         base_reward = grader_score - self.state.best_score
         if base_reward <= 0.0:
@@ -141,6 +156,7 @@ class OpenEnv:
         reward_val = base_reward + efficiency_bonus
         if reward_val > 0.99:
             reward_val = 0.99
+        reward_val = max(0.01, reward_val)
 
         # Update environment tracking
         self.state.best_score = max(self.state.best_score, grader_score)

@@ -66,7 +66,7 @@ async def main():
     )
 
     try:
-        for task_name in ["debug_memory_leak", "fix_retry_logic", "implement_circuit_breaker"]:
+        for task_name in ["fix_syntax_error", "debug_memory_leak", "fix_retry_logic", "implement_circuit_breaker"]:
             try:
                 task_prompt = ""
                 rewards = []

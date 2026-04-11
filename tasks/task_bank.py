@@ -284,10 +284,60 @@ def grade_implement_circuit_breaker(workspace: str) -> float:
 
 
 # ---------------------------------------------------------------------------
+# Grader 4 – fix_syntax_error  (Easy)
+# ---------------------------------------------------------------------------
+
+def grade_fix_syntax_error(workspace: str) -> float:
+    target_path = os.path.join(workspace, "broken.py")
+    if not os.path.exists(target_path):
+        return 0.01
+
+    try:
+        code = open(target_path).read()
+        compile(code, "broken.py", "exec")
+    except SyntaxError:
+        return 0.01
+
+    ns = _safe_exec(code, target_path)
+    score = 0.01
+
+    if "add" not in ns:
+        score = 0.15
+    else:
+        try:
+            if ns["add"](2, 3) == 5:
+                score = 0.99
+            else:
+                score = 0.5
+        except Exception:
+            score = 0.5
+
+    return min(max(score, 0.01), 0.99)
+
+
+# ---------------------------------------------------------------------------
 # Task definitions
 # ---------------------------------------------------------------------------
 
 TASKS = [
+    Task(
+        name="fix_syntax_error",
+        difficulty="Easy",
+        prompt=(
+            "Fix the syntax error in broken.py. The file contains \n"
+            "a function with a missing colon after the def statement. \n"
+            "The function should be named add(a, b) and return a + b."
+        ),
+        setup_files={
+            "broken.py": (
+                "def add(a, b)\n"
+                "    return a + b\n"
+            )
+        },
+        grader=grade_fix_syntax_error,
+        seed=7,
+        step_budget=5,
+    ),
     Task(
         name="debug_memory_leak",
         difficulty="Medium",
