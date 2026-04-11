@@ -33,6 +33,12 @@ class OpenEnv:
         self.task_bank = get_task_bank()
         self.state_encoder = StateEncoder()
         self.bandit = LinUCBBandit()
+        if not os.path.exists("/app/bandit_weights.npz"):
+            try:
+                from scripts.preseed_bandit import preseed_bandit
+                preseed_bandit()
+            except ImportError:
+                pass
         self.bandit.load()
         
         self.provider = Provider(api_key=api_key)
