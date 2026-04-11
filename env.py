@@ -20,9 +20,9 @@ class OpenEnvState:
     task_prompt: str
     workspace: str
     history: list = field(default_factory=list)
-    total_reward: float = 0.0
+    total_reward: float = 0.01
     steps: int = 0
-    best_score: float = 0.0
+    best_score: float = 0.01
     last_submission: str = ""
 
 
@@ -71,9 +71,9 @@ class OpenEnv:
             "task_prompt": task.prompt,
             "workspace": workspace,
             "history": [],
-            "total_reward": 0.0,
+            "total_reward": 0.01,
             "steps": 0,
-            "best_score": 0.0,
+            "best_score": 0.01,
         }
 
     async def step(self, prompt: str) -> StepResponse:
@@ -132,7 +132,7 @@ class OpenEnv:
             base_reward = 0.01
 
         # 3. Apply early-solver efficiency bonus
-        efficiency_bonus = 0.0
+        efficiency_bonus = 0.01
         if grader_score >= 0.95 and self.state.steps <= step_budget // 2:
             efficiency_bonus = 0.1
 
@@ -168,13 +168,13 @@ class OpenEnv:
         # Build token-efficiency score for the efficiency component
         token_budget = 3000
         tokens_used = getattr(ctx, "tokens_used", 0) or 0
-        token_efficiency = max(0.0, min(1.0, 1.0 - tokens_used / token_budget))
+        token_efficiency = max(0.01, min(0.99, 1.0 - tokens_used / token_budget))
 
         observation = Observation(**self._get_state_dict())
         reward_obj = Reward(
-            correctness=min(max(grader_score, 0.0), 1.0),
+            correctness=min(max(grader_score, 0.01), 0.99),
             efficiency=token_efficiency,
-            final_score=min(max(reward_val, 0.0), 1.0),
+            final_score=min(max(reward_val, 0.01), 0.99),
         )
 
         return StepResponse(

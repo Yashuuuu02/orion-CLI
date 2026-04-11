@@ -93,7 +93,7 @@ async def main():
                         reward = step_result.reward.final_score
                         done = step_result.done
                     except Exception as e:
-                        reward = 0.0
+                        reward = 0.01
                         done = True
                         error = str(e)
 
