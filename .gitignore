@@ -211,3 +211,8 @@ diag_*.ps1
 diag_*.py
 verify_*.py
 *.ps1
+
+out.txt
+agentic_output.txt
+orion_cli_documentation.docx
+*.txt
