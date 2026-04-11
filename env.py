@@ -10,7 +10,7 @@ from orion.pipeline.runner import PipelineRunner
 from orion.provider.provider import Provider
 from orion.tool.tools import ReadTool, WriteTool, EditTool, GrepTool
 from tasks.task_bank import TaskBank, get_task_bank
-from app.models import Observation, Reward, StepResponse
+from app.models import Observation, Reward, StepResponse, ToolResponse
 
 
 @dataclass
