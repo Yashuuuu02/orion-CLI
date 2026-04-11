@@ -43,8 +43,13 @@ class OpenEnv:
         }
         self.runner = PipelineRunner(provider=self.provider, tools=self.tools)
 
-    async def reset(self, difficulty: Optional[str] = None) -> dict:
-        task = self.task_bank.sample(difficulty)
+    async def reset(self, task_name: str = None, difficulty: str = None) -> dict:
+        if task_name:
+            task = self.task_bank.get_by_name(task_name)
+            if task is None:
+                task = self.task_bank.sample(difficulty=difficulty)
+        else:
+            task = self.task_bank.sample(difficulty=difficulty)
         
         workspace = tempfile.mkdtemp(prefix="orion_env_")
         
@@ -218,9 +223,9 @@ def get_env(api_key: str) -> OpenEnv:
     return _env_instance
 
 
-async def reset(difficulty: Optional[str] = None) -> dict:
+async def reset(task_name: str = None, difficulty: str = None) -> dict:
     env = get_env(os.environ.get("NVIDIA_NIM_API_KEY", ""))
-    return await env.reset(difficulty)
+    return await env.reset(task_name=task_name, difficulty=difficulty)
 
 
 async def step(prompt: str) -> StepResponse:

@@ -397,6 +397,12 @@ class TaskBank:
     def get_current(self) -> Optional[Task]:
         return self.current_task
 
+    def get_by_name(self, name: str):
+        for task in self.tasks:
+            if task.name == name:
+                return task
+        return None
+
     def grade(self, workspace: str) -> float:
         if not self.current_task:
             return 0.01
