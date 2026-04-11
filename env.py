@@ -33,6 +33,7 @@ class OpenEnv:
         self.task_bank = get_task_bank()
         self.state_encoder = StateEncoder()
         self.bandit = LinUCBBandit()
+        self.bandit.load()
         
         self.provider = Provider(api_key=api_key)
         self.tools = {
@@ -165,6 +166,7 @@ class OpenEnv:
         
         new_state = self.state_encoder.encode("feature", "medium", prompt, self.state.workspace)
         self.bandit.update(new_state.to_list(), action_idx, reward_val)
+        self.bandit.save()
 
         # Build token-efficiency score for the efficiency component
         token_budget = 3000

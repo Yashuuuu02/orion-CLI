@@ -129,6 +129,15 @@ class LinUCBBandit:
         self.total_count = 0
         self._save()
 
+    def save(self, path="/app/bandit_weights.npz"):
+        np.savez(path, A=self.A, b=self.b, counts=list(self.counts.values()))
+
+    def load(self, path="/app/bandit_weights.npz"):
+        if os.path.exists(path):
+            data = np.load(path)
+            self.A = data['A']
+            self.b = data['b']
+
 
 def get_default_action() -> dict:
     return {"coder_tier": "coder"}
