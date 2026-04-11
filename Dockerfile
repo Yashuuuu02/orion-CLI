@@ -31,4 +31,7 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
 
 USER orion
 
+COPY scripts/ ./scripts/
+RUN python -c "from scripts.preseed_bandit import preseed_bandit; preseed_bandit()"
+
 CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "7860"]

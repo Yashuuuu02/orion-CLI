@@ -134,7 +134,8 @@ class LinUCBBandit:
     def save(self, path="/app/bandit_weights.npz"):
         np.savez(path, A=self.A, b=self.b, counts=np.array(list(self.counts.values())))
 
-    def load(self, path="/app/bandit_weights.npz"):
+    def load(self, path=None):
+        path = path or os.environ.get("BANDIT_WEIGHTS_PATH", "/app/bandit_weights.npz")
         if os.path.exists(path):
             data = np.load(path)
             self.A = data['A']

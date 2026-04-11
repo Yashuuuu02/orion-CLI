@@ -64,12 +64,10 @@ def preseed_bandit():
         bandit.update(state_list, action_idx, reward)
         
     try:
-        os.makedirs(os.path.dirname("/app/bandit_weights.npz"), exist_ok=True)
-        bandit.save()
+        save_path = os.environ.get("BANDIT_WEIGHTS_PATH", "/app/bandit_weights.npz")
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        bandit.save(save_path)
     except Exception:
-        try:
-            bandit.save("bandit_weights.npz") # fallback locally
-        except:
-            pass
+        pass
     # LinUCBBandit _save() will trigger automatically during update(), 
     # but bandit.save() explicitly writes the .npz as requested.
