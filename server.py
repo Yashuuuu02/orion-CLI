@@ -198,6 +198,7 @@ async def rl_stats():
     import numpy as np
 
     bandit = LinUCBBandit()
+    bandit.load("/app/bandit_weights.npz")
     encoder = StateEncoder()
 
     def _best_action(intent: str, complexity: str) -> str:
@@ -211,7 +212,7 @@ async def rl_stats():
         "algorithm": "LinUCB Contextual Bandit",
         "n_actions": bandit.n_actions,
         "n_features": bandit.n_features,
-        "total_episodes": bandit.total_count,
+        "total_episodes": sum(bandit.counts.values()),
         "action_counts": {
             ACTION_NAMES[a]: bandit.counts.get(a, 0) for a in range(bandit.n_actions)
         },
