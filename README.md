@@ -1,178 +1,202 @@
 ---
 title: OrionCLI
-emoji: 🚀
+emoji: 🤖
 colorFrom: blue
-colorTo: purple
+colorTo: indigo
 sdk: docker
 pinned: false
 ---
 
 # OrionCLI — RL-Optimised Agentic Coding Environment
 
-An OpenEnv-compliant environment where an RL agent learns to route coding tasks through optimal LLM pipeline configurations.
+## Overview
+OrionCLI is an advanced OpenEnv submission that pushes the boundaries of standard code generation tasks by incorporating an internal reinforcement learning (RL) optimization loop right into the environment. Unlike static one-shot environments, OrionCLI utilizes a LinUCB Contextual Bandit to dynamically select pipeline execution strategies (e.g., fast versus heavy planning, code reviews). It simulates real-world software engineering with multi-step interactive episodes, sophisticated runtime execution grading, and IISG (Instance, Intent, State, Grader) pass rate tracking. 
 
 ## What Makes This Different
-- LinUCB contextual bandit selects optimal pipeline config per task type
-- 8 distinct pipeline actions (planner/coder/reviewer tier combinations)
-- IISG (Intent-Instruction-Solution-Grade) validation pipeline
-- Real algorithmic tasks that require multi-step reasoning
+- **Adaptive Execution Routing**: Leverages an internal LinUCB Contextual Bandit to route code generation through 8 distinct pipeline configurations based on a dynamic 4-feature state vector (intent, complexity, language, historic pass rate).
+- **Multi-Step Persistent Episodes**: Agents can interact iteratively with the environment up to a defined `step_budget`. The environment maintains the workspace state and conversation history across steps.
+- **Improvement-Based Reward Model**: Multi-level graders supply localized feedback, and agents are rewarded based on improvement deltas over their historic `best_score` within the episode, with significant bonuses for high token efficiency and early completions.
+- **Robust Session Management**: A built-in LRU cache dict efficiently manages up to 512 concurrent simulation sessions directly via HTTP APIs.
 
 ## Environment Description
-OrionCLI is an OpenEnv-compliant reinforcement learning wrapper around a conversational LLM pipeline. In an episode, an external LLM agent interacts with the environment by proposing textual prompt actions. Internally, the environment passes the prompts to a `PipelineRunner`. An embedded LinUCB contextual bandit sits in the middle, dynamically optimizing the specific execution pipeline (choosing between 8 combinations of planner, coder, and reviewer configurations) based on the task's complexity, category, and historical pass rates. The workspace lives in an isolated temporary directory dynamically created per session where files are created, modified, and executed.
+The core OpenEnv interface enables an agent to instantiate a temporary `workspace` populated with task-specific setup files (if any). The episode operates interactively: an agent submits commands or generated code, the environment executes the underlying logic inside a restricted AST-compiled Python Sandbox, and then evaluates the actual state of the workspace using task-specific Graders. The episode terminates when the task is perfectly solved (Grader returns `≥ 0.95`), the agent maxes out the `step_budget`, or the agent duplicates submissions indicating it is stuck.
 
 ## Action Space
-The environment expects the external agent to provide a `StepAction` at each step:
-- `prompt` (`str`): The instruction or response from the agent. This field uses Pydantic's constraint logic ensuring `min_length=1`.
+| Field | Type | Constraints | Description |
+|-------|------|-------------|-------------|
+| `prompt` | `str` | `min_length=1` | The agent's submitted action prompt, code, bash command, or narrative. Submitted per `/step`. |
 
-## Observation Space
-Every step or reset operation yields an `Observation` Pydantic model:
-
+## Observation Space  
 | Field | Type | Description |
 |-------|------|-------------|
-| `task_name` | `str` | Unique identifier for the current task being attempted. |
-| `task_difficulty` | `str` | Human-readable string denoting task difficulty (e.g., Medium, Hard). |
-| `task_prompt` | `str` | The initial task problem statement and constraints. |
-| `workspace` | `str` | Absolute path to the isolated temporary workspace directory. |
-| `history` | `list[dict]` | Contextual log of the past actions, pipeline executions, and rewards. |
-| `total_reward` | `float` | Cumulative reward score obtained across the current episode. |
-| `steps` | `int` | Integer tracking the number of steps taken in the episode. |
+| `task_name` | `str` | Internal identifier of the current task. |
+| `task_difficulty` | `str` | Difficulty setting, either `Medium` or `Hard`. |
+| `task_prompt` | `str` | The exact prompt outlining requirements provided to the agent. |
+| `workspace` | `str` | Absolute path to the isolated temporary directory for the session. |
+| `history` | `list[dict]` | Contextual history of recent actions, steps, and execution outputs (last 5 entries). |
+| `total_reward` | `float` | Cumulative reward accumulated across all steps in the current episode. |
+| `steps` | `int` | Current step index inside the multi-step episode. |
+| `best_score` | `float` | The maximum correctness score achieved by the underlying grader so far. |
 
 ## Tasks
-The environment features demanding programming tasks with granular scoring to evaluate nuanced capabilities of frontier LLMs.
 
-### debug_off_by_one (Medium, seed=42, budget=10)
-- **Description**: Fix binary search off-by-one error that misses the last array element.
-- **What makes it hard**: The agent must detect a subtle boundary indexing error (`len(arr) - 2`) inside a well-known algorithmic loop without hallucinating unnecessary refactors.
-- **Grader Scoring**: 
-  - `0.99`: Proper correction implemented, passes all test cases.
-  - `0.7`: Fixes the original edge case but introduces regression elsewhere (3+ tests pass).
-  - `0.4`: Function executes and returns an int, but core algorithmic logic is flawed.
-  - `0.1`: Function executes but raises an exception.
-  - `0.01`: Syntax error or missing target file.
+### debug_memory_leak (Medium · seed=42 · step_budget=15)
+- **Prompt**: "Fix the memory leak in cache_manager.py. The _cache dict grows unbounded because expired entries are never evicted. Add TTL-based expiration so entries older than ttl_seconds are removed on access and during cleanup()."
+- **Setup**: Drops a `cache_manager.py` file containing a naïve dictionary-based cache implementation lacking TTL checks.
+- **Grader breakdown**:
+  - `0.99`: Successfully cleans up expired keys explicitly on `cleanup()` *and* implicitly returns `None` on `get()`.
+  - `0.75`: Handles `get()` expiration but fails `cleanup()`.
+  - `0.5`: Handles `cleanup()` but fails `get()`.
+  - `0.25`: Sandbox execution failed after basic AST compile.
+  - `0.01`: Syntax Errors or file missing.
+- **Difficulty rationale**: The agent must modify two separate methods within a class accurately and manage Python timestamps (`time.time()`).
 
-### fix_race_condition (Hard, seed=137, budget=20)
-- **Description**: Fix async counter race condition by adding `asyncio.Lock` to read-modify-write pattern.
-- **What makes it hard**: Concurrency flaws can be elusive. The asynchronous race condition only triggers during context yields (`await asyncio.sleep(0)`). The agent must infer the lack of thread-safety in an async block and properly provision locking primitives.
-- **Grader Scoring**:
-  - `0.99`: Correct lock implementation, 100-coroutine concurrent stress test succeeds.
-  - `0.7`: Locking primitive implemented but the concurrent state validation fails over time.
-  - `0.4`: Core class logic is present but lacking asynchronous synchronization mechanisms.
-  - `0.1`: Syntax execution fails due to improper async semantics.
-  - `0.01`: Target task files are non-existent.
+### fix_retry_logic (Hard · seed=137 · step_budget=20)
+- **Prompt**: "Fix the retry decorator in retry_utils.py. It has three bugs:\n1. It retries on ALL exceptions instead of only RetryableError\n2. The backoff multiplier is applied before the first retry (should start at 1x)\n3. It swallows the original exception — should re-raise after max retries"
+- **Setup**: Drops a `retry_utils.py` file containing a flawed functional closure `@retry` decorator.
+- **Grader breakdown**: 
+  - `0.99`: Fixes all 3 distinct bugs.
+  - `0.75`: Fixes 2 bugs.
+  - `0.5`: Fixes 1 bug.
+  - `0.25`: Code executes gracefully but no bugs are corrected.
+  - `0.01`: File missing or uncompilable.
+- **Difficulty rationale**: Decorators are inherently complex. Fixing all requires detailed understanding of closure variables (`nonlocal`), exception handling nuances (`raise e`), and correct flow control inside tight loops.
 
-### implement_lru_cache (Hard, seed=999, budget=20)
-- **Description**: Implement O(1) LRU cache with `get(key)` and `put(key, value)` supporting eviction.
-- **What makes it hard**: Realizing algorithmic rigor; an optimal solution requires `collections.OrderedDict` or a doubly linked list coupled with a hash map to achieve strict `O(1)` performance guarantees during operations and eviction.
-- **Grader Scoring**:
-  - `0.99`: Full functional correctness passing 5 behavioral tests.
-  - `0.8`: Degraded logic (4/5 cases passing).
-  - `0.6`: Boundary mismanagement (3/5 cases passing).
-  - `0.4`: Minimal functional correctness (2/5 cases passing).
-  - `0.2`: Poor functional correctness (1/5 cases passing).
-  - `0.1`: Class loads but core constraints violate expected behavior across all tests.
-  - `0.01`: Structural errors or omission of expected files.
+### implement_circuit_breaker (Hard · seed=999 · step_budget=25)
+- **Prompt**: "Implement a circuit breaker pattern in circuit_breaker.py.\nRequirements:\n- CircuitBreaker(failure_threshold=3, recovery_timeout=30)\n- States: CLOSED (normal), OPEN (failing, reject calls), HALF_OPEN (testing)\n- Transitions: CLOSED→OPEN after failure_threshold failures\n- Transitions: OPEN→HALF_OPEN after recovery_timeout seconds\n- Transitions: HALF_OPEN→CLOSED on success, HALF_OPEN→OPEN on failure\n- call(func, *args) method that enforces the circuit state\n- Raise CircuitBreakerOpen when circuit is OPEN"
+- **Setup**: None (pure greenfield implementation).
+- **Grader breakdown**:
+  - `0.99`: Meets all requirements, executing full `CLOSED -> OPEN -> HALF_OPEN` transitions strictly tested through mocked runtime flows.
+  - `0.8`: correctly evaluates the `CLOSED -> OPEN` phase and properly blocks execution returning `CircuitBreakerOpen`.
+  - `0.6`: Permits successful code execution when initially `CLOSED`.
+  - `0.4`: Class exists and is structurally somewhat valid.
+  - `0.01`: Fails basic compilation or file omitted entirely.
+- **Difficulty rationale**: Pure from-scratch architecture problem testing State Machine logic. Tricky to manage asynchronous timeouts synchronously during evaluation (`time.sleep` mocking). 
 
 ## RL Architecture
-The internal architecture relies on a **LinUCB (Linear Upper Confidence Bound)** contextual bandit. The bandit optimizes execution runtimes by assigning an incoming request to one of 8 heterogeneous operational pipelines.
-- **State Vector Features**: It derives a state representation by analyzing intent (`"bug_fix"`, `"feature"`), static complexity constraints, detected programming language footprints, and a historical running average of the Intent-Instruction-Solution-Grade (IISG) validation rate.
-- **Learning**: Post-execution, the model calculates the derived step rewards to recursively adjust covariance properties and pipeline feature weights online, shifting compute allocation progressively towards efficient pipeline strategies over multiple episodes.
+- **Algorithm**: `LinUCB Contextual Bandit`
+- **State Vector**: Encoded as 4 continuous features:
+  - `intent_type` (`bug_fix`, `feature`, `refactor`)
+  - `complexity` (`low`, `medium`, `high`)
+  - `language` (detected codebase dominant language format integer)
+  - `past_iisg` (rolling window of the last 5 average IISG scores)
+- **Update Mechanism**: Online weight update. Every episode steps generates a temporal error delta causing `BanditWeights` to adjust exploration variables iteratively, saved locally to `~/.orion/bandit_weights.json`.
+- **Visibility**: Hit `/rl/stats` dynamically at runtime to visualize UCB learning coefficients.
+
+| Action Name | Planner Tier | Coder Tier | Reviewer |
+|---|---|---|---|
+| fast-fast-no-review | fast | fast | False |
+| fast-coder-no-review | fast | coder | False |
+| fast-coder-balanced-review | fast | coder | True | 
+| balanced-coder-balanced-review | balanced | coder | True |
+| fast-fast-with-review | fast | fast | True |
+| balanced-heavy-with-review | balanced | heavy | True |
+| balanced-coder-with-review | balanced | coder | True |
+| balanced-heavy-no-review | balanced | heavy | False |
 
 ## Reward Model
-Step evaluations utilize the structured `Reward` model ensuring normalized output bounding `[0.0, 1.0]`:
-- **`correctness`**: A float indicating the functional validity of an intermediate action or a granular unit test execution.
-- **`efficiency`**: Inverse token-efficiency penalty calculated dynamically based on a token execution budget.
-- **`final_score`**: Output evaluation scalar aggregating correctness validation against the targeted intent. 
+| Field | Description |
+|---|---|
+| `correctness` | The absolute evaluation score (`0.0` - `1.0`) obtained straight from the Sandbox Grader. |
+| `efficiency` | A computed float `0.0` - `1.0` dynamically balancing tokens used vs general `token_budget` limits. |
+| `final_score` | Computes Delta Improvement Rewards against the internal episode `best_score`. Max value is bounded to `0.99`. |
+
+**Efficiency Bonus:** Any step finishing with absolute `correctness >= 0.95` inside half the expected `step_budget` natively earns a `.1` additive early-solver efficiency bonus.  
+**Termination Conditions:** `is_done` returns `True` explicitly when max runtime passes, `correctness` goes above `0.95`, or identical successive submission hashes denote loop freezes.
 
 ## API Reference
-The application is wrapped natively via FastAPI for continuous environment interaction.
-
 | Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/health` | Simple liveness check |
-| POST | `/reset` | Initializes a new session and returns the initial observation |
-| POST | `/step` | Steps the environment via `StepAction` returning observation and reward |
-| GET | `/state` | Returns the raw internal state dictionary of the active session |
-| GET | `/tasks` | Lists available tasks and descriptions |
-| POST | `/grader` | Re-run a task grader against an arbitrary existing workspace |
-| POST | `/baseline` | Fetch static baseline configuration information |
-| GET | `/metadata` | Environment properties, schema formats, and supported fields |
-| GET | `/schema` | Core entity representation JSON schemas |
-| GET | `/openenv.yaml`| Returns the static OpenEnv configuration structure |
+|---|---|---|
+| **GET** | `/health` | Rapid liveness proxy check for Docker. |
+| **POST** | `/reset` | Spawns sandbox, picks task logic, boots `Observation` space session. |
+| **POST** | `/step` | Executes AST actions asynchronously returning `StepResponse`. |
+| **GET** | `/state` | Returns pure real-time data frame of session internals. |
+| **GET** | `/tasks` | Dumps array of seeded `Medium` / `Hard` Tasks. |
+| **POST** | `/grader` | Takes offline workspace volumes returning exact validation trajectory output. |
+| **POST** | `/baseline` | Dummy endpoint exposing current models base scores. |
+| **GET** | `/metadata` | Static metadata variables mapping OpenEnv architecture constraints. |
+| **GET** | `/schema` | Dynamic reflection resolving Pydantic v2 underlying JSON schemas. |
+| **GET** | `/rl/stats` | JSON payload defining Bandit learning coefficients. |
+| **GET** | `/openenv.yaml`| Standard validator compliance requirement file. |
 
 ## Baseline Scores
-The following reflect expected behavior trajectories obtained via local execution. 
-
-| Task Name | Difficulty | Expected Baseline | Notes |
-|-----------|------------|-------------------|-------|
-| `debug_off_by_one` | Medium | `> 0.80` | Consult `inference.py` baseline output |
-| `fix_race_condition` | Hard | `~ 0.50` | Frequently encounters syntax degradation |
-| `implement_lru_cache` | Hard | `~ 0.40` | Requires complex O(1) constraints inference |
+| Task Name | Difficulty | Baseline Score | Notes |
+|---|---|---|---|
+| debug_memory_leak | Medium | TBD | Currently unmeasured directly by baseline agent. Run `inference.py`. |
+| fix_retry_logic | Hard | TBD | Currently unmeasured directly by baseline agent. Run `inference.py`. |
+| implement_circuit_breaker | Hard | TBD | Currently unmeasured directly by baseline agent. Run `inference.py`. |
 
 ## Setup & Usage
 
 ### Environment Variables
-| Variable | Description |
-|----------|-------------|
-| `API_BASE_URL` | Provider URL path. Default: `https://integrate.api.nvidia.com/v1` |
-| `MODEL_NAME` | Active inference target. Default: `nvidia_nim/qwen/qwen2.5-coder-32b-instruct` |
-| `HF_TOKEN` | HuggingFace Token, mandatory for local inference endpoints. |
-| `NVIDIA_NIM_API_KEY` | Secondary authentication key for internal agent capabilities mapping. |
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `API_BASE_URL` | No | `"https://integrate.api.nvidia.com/v1"` | LLM Server base URI overwrite for completions. |
+| `MODEL_NAME` | No | `"nvidia_nim/qwen/qwen2.5-coder-32b-instruct"` | Name of model deployed in Provider SDK setup. |
+| `HF_TOKEN` | Yes | None | HuggingFace Token access. |
+| `NVIDIA_NIM_API_KEY` | Yes | (empty) | Default Orion environment API key requirement. |
+| `MAX_SESSIONS` | No | `512` | Absolute max quantity of LRU sessions cache. |
 
 ### Run with Docker
-Compile and expose the server process reliably.
 ```bash
 docker build -t orion-cli .
-docker run -p 7860:7860 -e HF_TOKEN=$HF_TOKEN orion-cli
+docker run -p 7860:7860 -e NVIDIA_NIM_API_KEY="your-api-key" orion-cli
 ```
 
 ### Run Inference Script
-Execute continuous evaluations locally against the bandit configuration.
 ```bash
+export API_BASE_URL="https://integrate.api.nvidia.com/v1"
+export MODEL_NAME="nvidia_nim/qwen/qwen2.5-coder-32b-instruct"
+export HF_TOKEN="your-hf-token"
 python inference.py
 ```
 
-### API Usage Example with session_id
-Session architectures require tracking session state.
+### Session Management
+Each call to `/reset` independently creates a new globally referenced UUID representing a sandbox namespace. By passing `{"session_id": "YOUR_UUID"}` iteratively to `/step`, the underlying server ensures history, Bandit variables, and workspace contents remain safely separated in the LRU `_sessions` OrderedDict. 
 
+### API Example
 ```bash
-# 1. Initialize environment
-curl -X POST http://localhost:7860/reset \
-  -H "Content-Type: application/json" \
-  -d '{"difficulty": "hard"}'
+# 1. Start session
+curl -X POST http://localhost:7860/reset -H "Content-Type: application/json" -d '{}'
 
-# 2. Advance Episode Step
-curl -X POST http://localhost:7860/step \
-  -H "Content-Type: application/json" \
-  -d '{"prompt": "Construct the async lock constraints", "session_id": "c62fb..."}'
+# 2. Extract given `session_id` from JSON
+
+# 3. Step forward
+curl -X POST http://localhost:7860/step -H "Content-Type: application/json" -d '{"prompt": "print(1)", "session_id": "78b-..."}'
+
+# 4. View environment history
+curl "http://localhost:7860/state?session_id=78b-..."
 ```
 
 ## OpenEnv Spec Compliance
-The implementation completely fulfills standard OpenEnv benchmarks:
-- **Pydantic Validation**: All Action/Observation/Reward schema types utilize rigorously bounded Pydantic definitions natively.
-- **Session Control**: Concurrent request interactions leverage LRU-evicting `OrderedDict` UUID dictionaries scaling natively up to `MAX_SESSIONS`.
-- **Reproducible Evaluation**: Graders apply fixed deterministic testing seeds mapping correctly to individual subtasks.
-- **API Parity**: Exposes dedicated configuration endpoints including `/grader`, `/metadata`, `/schema`, `/openenv.yaml` matching standard specifications. 
+- [x] Typed Pydantic v2 models (`Observation`, `StepAction`, `Reward`, `StepResponse`)
+- [x] Session management (LRU OrderedDict, 512 max constraint)
+- [x] Deterministic validation seeds per task ensuring reproduciability
+- [x] Built-in `/grader` offline evaluation endpoint for trajectory replay  
+- [x] Environment `openenv validate` compliance passing
+- [x] Native `HEALTHCHECK` layer in Dockerfile image
+- [x] Multi-step execution episodes returning improvement-based deltas
 
 ## Project Structure
 ```text
 orion-CLI/
 ├── app/
-│   ├── __init__.py
-│   └── models.py
-├── orion/                     # Framework Logic
-│   ├── rl/                    # Bandit & State Management
-│   ├── pipeline/
-│   ├── provider/
-│   └── cli/
+│   └── models.py            # Pydantic v2 Type Definitions for OpenAPI specification
+├── orion/
+│   ├── pipeline/            # Execution routing handlers
+│   ├── provider/            # LLM generation orchestration classes
+│   ├── rl/
+│   │   ├── bandit.py        # LinUCB stateful learning node & equations
+│   │   └── state_encoder.py # Multi-feature state logic compiler
+│   └── tool/                # Safe sandbox tools for edit/read actions
 ├── tasks/
-│   ├── __init__.py
-│   └── task_bank.py           # Multi-tier grading implementations
-├── Dockerfile                 # Healthcheck injected runner config
-├── env.py                     # Environment wrapper encapsulation
-├── inference.py               # Main baseline trajectory executor
-├── openenv.yaml               # Metadata mapping configuration
-├── pyproject.toml
-├── requirements.txt
-├── server.py                  # UUID Session based FastAPI core
-└── README.md
+│   └── task_bank.py         # Seeded tasks array, definitions, and restricted Sandbox AST Grader logic 
+├── Dockerfile               # Root environment virtualization with HEALTHCHECK logic
+├── env.py                   # State environment interface
+├── inference.py             # Sandbox baseline evaluator entry script
+├── openenv.yaml             # Manifest mapping
+└── server.py                # Concurrent FastAPI service gateway
 ```
+
+## License
+Apache 2.0

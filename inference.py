@@ -17,15 +17,19 @@ def log_start(task, env_name, model):
     print(f"[START] task={task} env={env_name} model={model}", flush=True)
 
 
-def log_step(step, reward):
+def log_step(step, action_text, reward, done, error):
     display_reward = min(max(reward, 0.01), 0.99)
-    print(f"[STEP] step={step} reward={display_reward:.2f}", flush=True)
+    action_str = action_text.replace('\n', ' ')[:80]
+    done_str = "true" if done else "false"
+    error_str = "null" if error is None else error
+    print(f"[STEP] step={step} action={action_str} reward={display_reward:.2f} done={done_str} error={error_str}", flush=True)
 
 
 def log_end(task, steps, rewards):
     score = sum(rewards) / len(rewards) if rewards else 0.0
-    display_score = min(max(score, 0.01), 0.99)
-    print(f"[END] task={task} score={display_score:.4f} steps={steps}", flush=True)
+    success_str = "true" if score >= 0.1 else "false"
+    rewards_str = ",".join(f"{r:.2f}" for r in rewards)
+    print(f"[END] success={success_str} steps={steps} rewards={rewards_str}", flush=True)
 
 
 def call_llm(client, messages):
@@ -51,7 +55,7 @@ async def main():
     )
 
     try:
-        for target_task in ["debug_off_by_one", "fix_race_condition", "implement_lru_cache"]:
+        for target_task in ["debug_memory_leak", "fix_retry_logic", "implement_circuit_breaker"]:
             task_name = target_task
             task_prompt = ""
             rewards = []
@@ -95,7 +99,7 @@ async def main():
                     rewards.append(reward)
                     steps = i
 
-                    log_step(step=i, reward=reward)
+                    log_step(step=i, action_text=action_text, reward=reward, done=done, error=error)
 
                     if done:
                         success = reward >= 0.95
