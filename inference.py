@@ -18,19 +18,16 @@ def log_start(task, env_name, model):
 
 
 def log_step(step, action_text, reward, done, error):
-    display_reward = min(max(reward, 0.01), 0.99)
+    display_reward = min(max(float(reward), 0.01), 0.99)
     action_str = action_text.replace('\n', ' ')[:80]
-    done_str = "true" if done else "false"
-    error_str = "null" if error is None else error
-    print(f"[STEP] step={step} action={action_str} reward={display_reward:.2f} done={done_str} error={error_str}", flush=True)
+    error_val = "null" if error is None else error
+    print(f"[STEP] step={step} action={action_str} reward={display_reward:.2f} done={str(done).lower()} error={error_val}", flush=True)
 
 
-def log_end(task, steps, rewards):
-    score = sum(rewards) / len(rewards) if rewards else 0.0
-    success_str = "true" if score >= 0.1 else "false"
-    clamped = [min(max(r, 0.01), 0.99) for r in rewards]
-    rewards_str = ",".join(f"{r:.2f}" for r in clamped)
-    print(f"[END] success={success_str} steps={steps} rewards={rewards_str}", flush=True)
+def log_end(task, steps, rewards, success):
+    clamped_rewards = [min(max(float(r), 0.01), 0.99) for r in rewards]
+    rewards_str = ",".join(f"{r:.2f}" for r in clamped_rewards)
+    print(f"[END] success={str(success).lower()} steps={steps} rewards={rewards_str}", flush=True)
 
 
 def call_llm(client, messages):
@@ -56,8 +53,7 @@ async def main():
     )
 
     try:
-        for target_task in ["debug_memory_leak", "fix_retry_logic", "implement_circuit_breaker"]:
-            task_name = target_task
+        for task_name in ["debug_memory_leak", "fix_retry_logic", "implement_circuit_breaker"]:
             task_prompt = ""
             rewards = []
             steps = 0
@@ -68,11 +64,11 @@ async def main():
 
             try:
                 try:
-                    state = await env.reset(task_name=target_task)
+                    state = await env.reset(task_name=task_name)
                 except TypeError:
                     state = await env.reset()
 
-                task_name = state.get("task_name", target_task)
+                task_name = state.get("task_name", task_name)
                 task_prompt = state.get("task_prompt", "")
 
                 for i in range(1, MAX_STEPS + 1):
@@ -107,7 +103,7 @@ async def main():
                         break
             finally:
                 # [END] is ALWAYS emitted, even if reset() or step() throws
-                log_end(task=task_name, steps=steps, rewards=rewards)
+                log_end(task=task_name, steps=steps, rewards=rewards, success=success)
     finally:
         env.close()
 
