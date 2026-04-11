@@ -131,8 +131,12 @@ class LinUCBBandit:
         self.total_count = 0
         self._save()
 
-    def save(self, path="/app/bandit_weights.npz"):
-        np.savez(path, A=self.A, b=self.b, counts=np.array(list(self.counts.values())))
+    def save(self, path=None):
+        path = path or os.environ.get("BANDIT_WEIGHTS_PATH", "/app/bandit_weights.npz")
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        counts_array = np.array([self.counts.get(i, 0) for i in range(self.n_actions)])
+        weights_array = np.array([self.weights.get(i, np.zeros(self.n_features)) for i in range(self.n_actions)])
+        np.savez(path, A=self.A, b=self.b, counts=counts_array, weights=weights_array)
 
     def load(self, path=None):
         path = path or os.environ.get("BANDIT_WEIGHTS_PATH", "/app/bandit_weights.npz")
@@ -140,6 +144,12 @@ class LinUCBBandit:
             data = np.load(path)
             self.A = data['A']
             self.b = data['b']
+            counts_array = data['counts']
+            self.counts = {i: int(counts_array[i]) for i in range(self.n_actions)}
+            self.total_count = sum(self.counts.values())
+            if 'weights' in data:
+                weights_array = data['weights']
+                self.weights = {i: weights_array[i] for i in range(self.n_actions)}
 
 
 def get_default_action() -> dict:
