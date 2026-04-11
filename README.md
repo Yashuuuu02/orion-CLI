@@ -95,7 +95,7 @@ Each `step()` returns a `StepResponse` containing:
 | `task_prompt` | `str` | Natural-language instruction for the agent |
 | `workspace` | `str` | Absolute path to the working directory |
 | `history` | `list[dict]` | Last 5 step records (`step`, `action_type`, `tool_result`, `reward`) |
-| `total_reward` | `float` | Cumulative reward across the episode |
+| `total_reward` | `float` | Cumulative reward sum across all steps (can exceed 1.0) |
 | `steps` | `int` | Number of steps taken so far |
 | `best_score` | `float` | Highest grader score achieved this episode |
 | `available_tools` | `list[str]` | `["read_file","write_file","run_tests","list_files","submit"]` |

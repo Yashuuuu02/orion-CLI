@@ -16,7 +16,11 @@ class Observation(BaseModel):
     task_prompt: str
     workspace: str
     history: list[dict] = Field(default_factory=list)
-    total_reward: float = Field(default=0.01, ge=0.01)
+    total_reward: float = Field(
+        default=0.01, 
+        ge=0.01,
+        description="Cumulative reward across all steps in this episode"
+    )
     steps: int = Field(default=0, ge=0)
     best_score: float = Field(default=0.01, ge=0.01)
     available_tools: list[str] = Field(

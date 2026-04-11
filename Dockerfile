@@ -20,6 +20,9 @@ COPY server.py .
 COPY server/ ./server/
 COPY openenv.yaml .
 
+COPY scripts/ ./scripts/
+RUN python -c "from scripts.preseed_bandit import preseed_bandit; preseed_bandit()"
+
 RUN chown -R orion:orion /app
 
 ENV PORT=7860
@@ -30,8 +33,5 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
     CMD curl -fsS http://127.0.0.1:7860/health >/dev/null || exit 1
 
 USER orion
-
-COPY scripts/ ./scripts/
-RUN python -c "from scripts.preseed_bandit import preseed_bandit; preseed_bandit()"
 
 CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "7860"]

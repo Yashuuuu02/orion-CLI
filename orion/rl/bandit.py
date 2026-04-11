@@ -102,6 +102,7 @@ class LinUCBBandit:
             self.counts[best] = 0
         self.counts[best] += 1
 
+        self._last_selected = best
         return best
 
     def get_action(self, action_idx: int) -> dict:

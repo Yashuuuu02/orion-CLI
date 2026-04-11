@@ -137,6 +137,18 @@ No explanation, no markdown, just the JSON."""},
                         # Update bandit with real episode reward
                         try:
                             if hasattr(env, 'bandit') and hasattr(env, 'state_encoder'):
+                                complexity = {"Easy": "low", "Medium": "medium", "Hard": "high"}.get(
+                                    env.state.task_difficulty if env.state else "Hard", "medium"
+                                )
+                                intent = {"fix_syntax_error": "bug_fix", "debug_memory_leak": "bug_fix",
+                                          "fix_retry_logic": "bug_fix", "implement_circuit_breaker": "feature"
+                                          }.get(task_name, "feature")
+                                state_vec = env.state_encoder.encode(
+                                    intent_type=intent, complexity=complexity,
+                                    prompt=task_name, cwd="."
+                                )
+                                last_action_idx = getattr(env.bandit, '_last_selected', 0)
+                                env.bandit.update(state_vec.to_list(), last_action_idx, reward)
                                 env.bandit.save()
                         except Exception:
                             pass
