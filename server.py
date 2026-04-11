@@ -13,6 +13,7 @@ from contextlib import asynccontextmanager
 from typing import Optional
 
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from env import OpenEnv
@@ -72,20 +73,30 @@ async def health():
 @app.post("/reset")
 async def reset(body: Optional[ResetRequest] = None):
     """Reset the environment and return the initial observation."""
-    difficulty = body.difficulty if body else None
-    observation = await _env.reset(difficulty)
-    return observation
+    if _env is None:
+        return JSONResponse(status_code=503, content={"error": "Environment not initialized"})
+    try:
+        difficulty = body.difficulty if body else None
+        observation = await _env.reset(difficulty)
+        return observation
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
 
 
 @app.post("/step")
 async def step(body: StepRequest):
     """Execute one step in the environment."""
-    state, reward, done = await _env.step(body.prompt)
-    return {
-        "observation": state,
-        "reward": reward,
-        "done": done,
-    }
+    if _env is None:
+        return JSONResponse(status_code=503, content={"error": "Environment not initialized"})
+    try:
+        state, reward, done = await _env.step(body.prompt)
+        return {
+            "observation": state,
+            "reward": reward,
+            "done": done,
+        }
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
 
 
 @app.get("/state")
