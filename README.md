@@ -23,6 +23,21 @@ OrionCLI is a multi-step, tool-based coding environment built to the [OpenEnv](h
 | **Production-grade tasks** | TTL cache invalidation, retry decorator bugs, stateful circuit breakers, and syntax repair |
 | **OpenEnv compliant** | Typed Pydantic v2 models, session management, deterministic seeds, `openenv.yaml` manifest |
 
+## Real-World Grounding
+
+OrionCLI tasks are modeled after bugs and patterns from 
+production Python libraries:
+
+| Task | Based On | Real Library |
+|------|----------|--------------|
+| fix_tenacity_retry | Retry decorator bugs | [tenacity](https://github.com/jd/tenacity) |
+| fix_cachetools_ttl | TTL cache expiry bugs | [cachetools](https://github.com/tkem/cachetools) |
+| implement_pybreaker | Circuit breaker pattern | [pybreaker](https://github.com/danielfm/pybreaker) |
+| fix_async_race | asyncio race conditions | Production async services |
+
+This grounds the environment in real failure modes that 
+production agents would actually encounter.
+
 ---
 
 ## How Episodes Work
@@ -106,60 +121,45 @@ Each `step()` returns a `StepResponse` containing:
 
 ## Tasks
 
-### `fix_syntax_error` · Easy · seed 7 · budget 5
+### `fix_tenacity_retry` · Medium · seed 42 · budget 15
 
-**Prompt:** Fix the syntax error in `broken.py` — the function `add(a, b)` is missing its colon.
-
-| Score | Condition |
-| :--- | :--- |
-| `0.01` | File missing or `SyntaxError` |
-| `0.15` | Compiles but `add` function is absent |
-| `0.50` | `add` exists but returns wrong result |
-| `0.99` | `add(2, 3) == 5` |
-
-**Scoring rationale:** 0.99 = objective achieved; 0.50 = correct structure but wrong semantics; 0.15 = parseable but missing function; 0.01 = floor to prevent zero reward signal to RL agent.
-
----
-
-### `debug_memory_leak` · Medium · seed 42 · budget 15
-
-**Prompt:** Fix the unbounded `_cache` dict in `cache_manager.py` — add TTL-based expiration on `get()` and in `cleanup()`.
-
-| Score | Condition |
-| :--- | :--- |
-| `0.01` | Syntax error or failed to load |
-| `0.10` | `CacheManager` class missing |
-| `0.25` | Class exists but fails validation |
-| `0.50` | `cleanup()` correctly removes expired entries |
-| `0.75` | `get()` correctly returns `None` for expired entries |
-| `0.99` | Full TTL lifecycle — both `get()` expiry and `cleanup()` removal |
-
-**Scoring rationale:** get() and cleanup() are scored independently (0.75 and 0.50) because they are orthogonal fixes — an agent fixing one method still demonstrates partial TTL understanding. Both required for 0.99 because either path alone still leaks.
-
----
-
-### `fix_retry_logic` · Hard · seed 137 · budget 20
-
-**Prompt:** Fix three bugs in the `retry` decorator in `retry_utils.py`:
-1. Catches **all** exceptions — should only retry on `RetryableError`
-2. Backoff delay starts at `backoff` instead of `1.0`
-3. Swallows the final exception (returns `None`) — should re-raise
+**Prompt:** Fix the retry decorator in `retry_utils.py`. It has two bugs:
+1. It does not check `retry_on_exception` before retrying.
+2. It returns `None` instead of raising `RetryError` after max attempts.
 
 | Score | Condition |
 | :--- | :--- |
 | `0.01` | File missing or `SyntaxError` |
-| `0.25` | `retry` / `RetryableError` not found |
-| `0.50` | 1 bug fixed |
-| `0.75` | 2 bugs fixed |
-| `0.99` | All 3 bugs fixed |
+| `0.25` | Class exists but both bugs present |
+| `0.50` | Returns None but retry checks `retry_on_exception` |
+| `0.75` | `RetryError` raised but `retry_on_exception` check missed |
+| `0.99` | All bugs fixed |
 
-**Scoring rationale:** Linear partial credit per bug fixed (0.50/0.75/0.99) because the 3 bugs are independent — any ordering of fixes is valid. Each bug fixed demonstrates a distinct debugging skill.
+**Scoring rationale:** Linear partial credit because bugs can be fixed independently.
 
 ---
 
-### `implement_circuit_breaker` · Hard · seed 999 · budget 25
+### `fix_cachetools_ttl` · Medium · seed 137 · budget 20
 
-**Prompt:** Implement a circuit breaker in `circuit_breaker.py` with `CLOSED → OPEN → HALF_OPEN` state transitions.
+**Prompt:** Fix the TTL cache in `cache_manager.py`. It has two bugs:
+1. `__getitem__` never checks if the entry has expired.
+2. `expire()` is broken/empty but should remove expired entries.
+
+| Score | Condition |
+| :--- | :--- |
+| `0.01` | File missing or `SyntaxError` |
+| `0.25` | Class exists but both bugs present |
+| `0.50` | `expire()` works but `__getitem__` doesn't check TTL |
+| `0.75` | `__getitem__` handles expiry but `expire()` is missing |
+| `0.99` | All bugs fixed |
+
+**Scoring rationale:** `__getitem__` and `expire()` are independent fixes.
+
+---
+
+### `implement_pybreaker` · Hard · seed 999 · budget 25
+
+**Prompt:** Implement a circuit breaker compatible with the pybreaker library interface in `circuit_breaker.py` with `CLOSED → OPEN → HALF_OPEN` state transitions.
 
 | Score | Condition |
 | :--- | :--- |
@@ -171,6 +171,21 @@ Each `step()` returns a `StepResponse` containing:
 | `0.99` | Transitions to HALF_OPEN after `recovery_timeout`, recovers on success |
 
 **Scoring rationale:** Tiers follow state machine implementation depth — instantiation (0.40) → happy path (0.60) → failure detection (0.80) → full recovery path (0.99). Each tier is a meaningful checkpoint in implementing a correct state machine.
+
+---
+
+### `fix_async_race` · Hard · seed 777 · budget 30
+
+**Prompt:** Fix the read-modify-write race condition in `SharedCounter.increment()` within `async_worker.py`.
+
+| Score | Condition |
+| :--- | :--- |
+| `0.01` | File missing or `SyntaxError` |
+| `0.25` | Class exists but race condition persists |
+| `0.50` | Code runs but counter is lost/corrupted |
+| `0.99` | Race condition fixed (e.g. using `asyncio.Lock()`) |
+
+**Scoring rationale:** Async bugs require explicit locks or atomic updates; running with partial locks usually fails completely (0.50) or succeeds fully (0.99).
 
 ---
 

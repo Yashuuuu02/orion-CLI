@@ -4,26 +4,26 @@ description: RL-optimised agentic coding assistant OpenEnv environment
 entrypoint: server.py
 
 tasks:
-  - name: fix_syntax_error
-    difficulty: easy
-    description: Fix the syntax error in broken.py. The file contains a function with a missing colon after the def statement. The function should be named add(a, b) and return a + b.
-    seed: 7
-    step_budget: 5
-  - name: debug_memory_leak
+  - name: fix_tenacity_retry
     difficulty: medium
-    description: Fix the memory leak in cache_manager.py. The _cache dict grows unbounded because expired entries are never evicted.
+    description: Fix the retry decorator in retry_utils.py. Contains bugs where it does not check retry_on_exception and returns None instead of raising RetryError.
     seed: 42
     step_budget: 15
-  - name: fix_retry_logic
-    difficulty: hard
-    description: Fix the retry decorator in retry_utils.py. Contains bugs with exception filtering, initial backoff value, and swallowing original exceptions.
+  - name: fix_cachetools_ttl
+    difficulty: medium
+    description: Fix the TTL cache in cache_manager.py. The __getitem__ never checks expiry, and expire() is broken/empty.
     seed: 137
     step_budget: 20
-  - name: implement_circuit_breaker
+  - name: implement_pybreaker
     difficulty: hard
-    description: Implement a circuit breaker pattern with CLOSED, OPEN, HALF_OPEN states and specific transition rules.
+    description: Implement a circuit breaker compatible with the pybreaker library interface.
     seed: 999
     step_budget: 25
+  - name: fix_async_race
+    difficulty: hard
+    description: Fix the read-modify-write race condition in SharedCounter.increment() within async_worker.py caused by asyncio.sleep(0) yielding control.
+    seed: 777
+    step_budget: 30
 
 observation_space:
   task_name: str

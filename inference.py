@@ -66,7 +66,7 @@ async def main():
     )
 
     try:
-        for task_name in ["fix_syntax_error", "debug_memory_leak", "fix_retry_logic", "implement_circuit_breaker"]:
+        for task_name in ["fix_tenacity_retry", "fix_cachetools_ttl", "implement_pybreaker", "fix_async_race"]:
             try:
                 task_prompt = ""
                 rewards = []
@@ -140,8 +140,8 @@ No explanation, no markdown, just the JSON."""},
                                 complexity = {"Easy": "low", "Medium": "medium", "Hard": "high"}.get(
                                     env.state.task_difficulty if env.state else "Hard", "medium"
                                 )
-                                intent = {"fix_syntax_error": "bug_fix", "debug_memory_leak": "bug_fix",
-                                          "fix_retry_logic": "bug_fix", "implement_circuit_breaker": "feature"
+                                intent = {"fix_tenacity_retry": "bug_fix", "fix_cachetools_ttl": "bug_fix",
+                                          "fix_async_race": "bug_fix", "implement_pybreaker": "feature"
                                           }.get(task_name, "feature")
                                 state_vec = env.state_encoder.encode(
                                     intent_type=intent, complexity=complexity,
