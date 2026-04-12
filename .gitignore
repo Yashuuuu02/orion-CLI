@@ -216,3 +216,8 @@ out.txt
 agentic_output.txt
 orion_cli_documentation.docx
 *.txt
+
+test_*.py
+*.docx
+utils.py
+*.txt
