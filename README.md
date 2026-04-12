@@ -9,6 +9,14 @@ pinned: false
 
 # OrionCLI — RL-Optimised Agentic Coding Environment
 
+[![OpenEnv](https://img.shields.io/badge/OpenEnv-v1%20Spec-green?style=for-the-badge)]
+[![Docker](https://img.shields.io/badge/Deploy-Docker-2496ED?style=for-the-badge)]
+[![Tests](https://img.shields.io/badge/Tests-6%20passing-brightgreen?style=for-the-badge)]
+[![Apache](https://img.shields.io/badge/License-Apache%202.0-blue?style=for-the-badge)]
+[![HF Space](https://img.shields.io/badge/HF%20Space-Live-yellow?style=for-the-badge)](https://huggingface.co/spaces/YASHUUU8/OrionCLI)
+
+*Built for the Meta × Hugging Face OpenEnv Hackathon*
+
 ## Overview
 
 OrionCLI is not just an OpenEnv submission — it's a complete RL-optimised agentic coding assistant built in 3 phases:
@@ -24,6 +32,20 @@ The bandit learns from real usage — not synthetic data:
 - `explain` tasks → cheapest config, reviewer irrelevant
 
 The 8 actions represent real pipeline configurations that affect actual LLM model tier, planner usage, and review step.
+
+## 🚫 The Problem → ✅ The Solution
+
+Current LLM coding agents fail in production because:
+- They make one-shot code dumps without reading the codebase
+- They have no mechanism to learn which approach works per task type  
+- They treat all bugs equally — a race condition needs different 
+  reasoning than a retry logic bug
+
+**OrionCLI** is the training environment that closes this gap. 
+A standardised RL environment where agents learn to *investigate*, 
+*plan*, and *fix* production bugs through structured tool calls, 
+while a LinUCB bandit learns which pipeline configuration produces 
+the best fixes per task category.
 
 ### Key Capabilities
 
@@ -48,6 +70,19 @@ production Python libraries:
 
 This grounds the environment in real failure modes that 
 production agents would actually encounter.
+
+## 📊 Baseline Scores
+
+| Task | Difficulty | Zero-Shot Score | Optimal Score | Gap (training signal) |
+|------|-----------|----------------|---------------|----------------------|
+| fix_tenacity_retry | Medium | ~0.50 | 0.99 | 0.49 |
+| fix_cachetools_ttl | Medium | ~0.50 | 0.99 | 0.49 |
+| implement_pybreaker | Hard | ~0.40 | 0.99 | 0.59 |
+| fix_async_race | Hard | ~0.25 | 0.99 | 0.74 |
+
+The gap between zero-shot and optimal IS the training signal. 
+Tasks where frontier models consistently fail are where RL 
+provides the most value.
 
 ---
 
@@ -183,6 +218,12 @@ Each `step()` returns a `StepResponse` containing:
 
 **Scoring rationale:** Tiers follow state machine implementation depth — instantiation (0.40) → happy path (0.60) → failure detection (0.80) → full recovery path (0.99). Each tier is a meaningful checkpoint in implementing a correct state machine.
 
+> ⚠️ **Why agents struggle:** State machines require tracking 
+> transitions across multiple calls. A one-shot agent writes 
+> CLOSED→OPEN correctly but forgets HALF_OPEN recovery. 
+> Multi-step tool workflow forces the agent to test each 
+> transition before submitting.
+
 ---
 
 ### `fix_async_race` · Hard · seed 777 · budget 30
@@ -198,11 +239,49 @@ Each `step()` returns a `StepResponse` containing:
 
 **Scoring rationale:** Async bugs require explicit locks or atomic updates; running with partial locks usually fails completely (0.50) or succeeds fully (0.99).
 
+> ⚠️ **Why agents struggle:** asyncio.sleep(0) as a yield point 
+> is non-obvious. Most agents add a Lock but put it in the wrong 
+> place. The run_tests tool lets agents verify their fix actually 
+> prevents the race before submitting.
+
 ---
 
 ## Reward Design Philosophy
 
 OrionCLI uses improvement-based delta rewards (`grader_score - best_score`) instead of absolute scores to ensure that agents are rewarded only for progress, preventing models from "hacks" that repeat high-scoring states without further discovery. We clamp rewards to the `(0.01, 0.99)` range to maintain a non-zero gradient for RL training and avoid numerical instability at the limits of the sigmoid/logistic space. An efficiency bonus exists to steer the agent towards the shortest path to completion, rewarding optimal tool usage. Together, these design choices create a dense, informative signal that allows the LinUCB bandit to convergence on optimal pipeline actions across varying task difficulties.
+
+## Why This Design
+
+**Why improvement-based delta rewards?**
+Absolute scores don't signal progress. An agent scoring 0.50 
+twice learns nothing. Delta rewards mean every improvement 
+gets positive signal, every regression gets none.
+
+**Why (0.01, 0.99) range?**
+Unlike classification tasks where 0.0 and 1.0 are valid, 
+automated code graders cannot claim perfect certainty. 
+0.01 ensures the RL agent always receives gradient signal. 
+0.99 prevents false "solved" termination.
+
+**Why real library tasks (tenacity, cachetools, pybreaker)?**
+Synthetic bugs are easy to pattern-match. Real library bugs 
+require understanding the intended behavior, not just the 
+syntax. An agent that fixes tenacity's retry logic has learned 
+something transferable to production codebases.
+
+**Why 8 pipeline actions?**
+The action space spans the meaningful dimensions of LLM 
+pipeline configuration: model capability (fast/balanced/heavy), 
+planning depth (with/without planner), and output quality 
+(with/without reviewer). 8 actions = 2³ combinations of 
+these three binary choices.
+
+**Why LinUCB over simpler bandits?**
+LinUCB uses the task context (intent, complexity, language) 
+to generalize across tasks. A simpler ε-greedy bandit would 
+treat every task independently. LinUCB learns that 
+"bug_fix + high complexity" always benefits from heavy+review 
+regardless of which specific bug it is.
 
 ## Why These Reward Weights?
 
@@ -363,7 +442,7 @@ The inference script runs all 4 tasks sequentially, logging `[START]`, `[STEP]`,
 # 1. Reset — create a new session
 curl -s -X POST http://localhost:7860/reset \
   -H "Content-Type: application/json" \
-  -d '{"task_name": "fix_syntax_error"}'
+  -d '{"task_name": "fix_tenacity_retry"}'
 
 # 2. List workspace files
 curl -s -X POST http://localhost:7860/step \
@@ -373,12 +452,12 @@ curl -s -X POST http://localhost:7860/step \
 # 3. Read the buggy file
 curl -s -X POST http://localhost:7860/step \
   -H "Content-Type: application/json" \
-  -d '{"action": {"action_type": "read_file", "path": "broken.py"}}'
+  -d '{"action": {"action_type": "read_file", "path": "retry_utils.py"}}'
 
 # 4. Write the fix
 curl -s -X POST http://localhost:7860/step \
   -H "Content-Type: application/json" \
-  -d '{"action": {"action_type": "write_file", "path": "broken.py", "content": "def add(a, b):\n    return a + b\n"}}'
+  -d '{"action": {"action_type": "write_file", "path": "retry_utils.py", "content": "def add(a, b):\n    return a + b\n"}}'
 
 # 5. Submit
 curl -s -X POST http://localhost:7860/step \
@@ -404,6 +483,10 @@ The server maintains an `OrderedDict` of active sessions capped at `MAX_SESSIONS
 - [x] `HEALTHCHECK` in Dockerfile
 - [x] Non-root container user (`orion:1000`)
 - [x] `openenv.yaml` manifest served at `/openenv.yaml`
+- [x] 6 golden trajectory tests (tests/test_graders.py)
+- [x] Bandit weights pre-seeded at Docker build time (200 episodes)
+- [x] Real library grounding (tenacity, cachetools, pybreaker)
+- [x] Step cost pressure on observation actions
 
 ---
 

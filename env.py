@@ -190,6 +190,15 @@ class OpenEnv:
             if grader_score >= 0.95 and self.state.steps <= self.task_bank.current_task.step_budget // 2:
                 efficiency_bonus = 0.1
             reward_val = min(max(base_reward + efficiency_bonus, 0.01), 0.99)
+        elif 'reward_val' not in locals():
+            reward_val = 0.01
+            
+        if action_type in ("view", "bash", "list_files"):
+            step_cost = -0.02
+        else:
+            step_cost = 0.0
+            
+        reward_val = max(0.01, reward_val + step_cost)
         
         # Update state
         self.state.steps += 1
