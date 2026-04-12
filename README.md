@@ -15,7 +15,12 @@ pinned: false
 [![Apache](https://img.shields.io/badge/License-Apache%202.0-blue?style=for-the-badge)](LICENSE)
 [![HF Space](https://img.shields.io/badge/HF%20Space-Live-yellow?style=for-the-badge)](https://huggingface.co/spaces/YASHUUU8/OrionCLI)
 
-*Built for the Meta × Hugging Face OpenEnv Hackathon*
+*Built for the Meta PyTorch OpenEnv Hackathon × SST*
+
+## 🏆 Hackathon Submission
+
+Submitted for **Round 1** of the [Meta PyTorch OpenEnv Hackathon × SST](https://www.scaler.com/school-of-technology/meta-pytorch-hackathon).  
+Built on the [OpenEnv spec](https://github.com/huggingface/openenv-course) by Meta & Hugging Face.
 
 > 🔴 **Live Dashboard:** View real-time episode data and RL bandit stats at [/dashboard](https://yashuuu8-orioncli.hf.space/dashboard)
 
