@@ -9,10 +9,10 @@ pinned: false
 
 # OrionCLI — RL-Optimised Agentic Coding Environment
 
-[![OpenEnv](https://img.shields.io/badge/OpenEnv-v1%20Spec-green?style=for-the-badge)]
-[![Docker](https://img.shields.io/badge/Deploy-Docker-2496ED?style=for-the-badge)]
-[![Tests](https://img.shields.io/badge/Tests-6%20passing-brightgreen?style=for-the-badge)]
-[![Apache](https://img.shields.io/badge/License-Apache%202.0-blue?style=for-the-badge)]
+[![OpenEnv](https://img.shields.io/badge/OpenEnv-v1%20Spec-green?style=for-the-badge)](https://github.com/meta-pytorch/OpenEnv)
+[![Docker](https://img.shields.io/badge/Deploy-Docker-2496ED?style=for-the-badge)](https://huggingface.co/spaces/YASHUUU8/OrionCLI)
+[![Tests](https://img.shields.io/badge/Tests-passing-brightgreen?style=for-the-badge)](https://github.com/Yashuuuu02/orion-CLI/tree/main/tests)
+[![Apache](https://img.shields.io/badge/License-Apache%202.0-blue?style=for-the-badge)](LICENSE)
 [![HF Space](https://img.shields.io/badge/HF%20Space-Live-yellow?style=for-the-badge)](https://huggingface.co/spaces/YASHUUU8/OrionCLI)
 
 *Built for the Meta × Hugging Face OpenEnv Hackathon*
@@ -492,7 +492,7 @@ curl -s -X POST http://localhost:7860/step \
 # 4. Write the fix
 curl -s -X POST http://localhost:7860/step \
   -H "Content-Type: application/json" \
-  -d '{"action": {"action_type": "write_file", "path": "retry_utils.py", "content": "def add(a, b):\n    return a + b\n"}}'
+  -d '{"action": {"action_type": "write_file", "path": "retry_utils.py", "content": "import functools\nimport time\n\nclass RetryError(Exception): pass\n\nclass TenacityRetry:\n    def __init__(self, stop_max_attempt=3, wait_fixed=1.0, retry_on_exception=None):\n        self.stop_max_attempt = stop_max_attempt\n        self.wait_fixed = wait_fixed\n        self.retry_on_exception = retry_on_exception or (lambda e: True)\n        self.statistics = {}\n    def __call__(self, func):\n        @functools.wraps(func)\n        def wrapper(*args, **kwargs):\n            for attempt in range(1, self.stop_max_attempt + 1):\n                try:\n                    return func(*args, **kwargs)\n                except Exception as e:\n                    if not self.retry_on_exception(e):\n                        raise\n                    if attempt == self.stop_max_attempt:\n                        raise RetryError(str(e))\n                    time.sleep(self.wait_fixed)\n        return wrapper\n"}}'
 
 # 5. Submit
 curl -s -X POST http://localhost:7860/step \
