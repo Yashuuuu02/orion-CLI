@@ -261,7 +261,7 @@ Measured from inference.py first-attempt results using
 
 ## Reward Design Philosophy
 
-OrionCLI uses improvement-based delta rewards (`grader_score - best_score`) instead of absolute scores to ensure that agents are rewarded only for progress, preventing models from "hacks" that repeat high-scoring states without further discovery. We clamp rewards to the `(0.01, 0.99)` range to maintain a non-zero gradient for RL training and avoid numerical instability at the limits of the sigmoid/logistic space. An efficiency bonus exists to steer the agent towards the shortest path to completion, rewarding optimal tool usage. Together, these design choices create a dense, informative signal that allows the LinUCB bandit to convergence on optimal pipeline actions across varying task difficulties.
+OrionCLI uses improvement-based delta rewards (`grader_score - best_score`) instead of absolute scores to ensure that agents are rewarded only for progress, preventing models from "hacks" that repeat high-scoring states without further discovery. We clamp rewards to the `[0.01, 0.99]` range to maintain a non-zero gradient for RL training and avoid numerical instability at the limits of the sigmoid/logistic space. An efficiency bonus exists to steer the agent towards the shortest path to completion, rewarding optimal tool usage. Together, these design choices create a dense, informative signal that allows the LinUCB bandit to converge on optimal pipeline actions across varying task difficulties.
 
 ## Why This Design
 
@@ -270,7 +270,7 @@ Absolute scores don't signal progress. An agent scoring 0.50
 twice learns nothing. Delta rewards mean every improvement 
 gets positive signal, every regression gets none.
 
-**Why (0.01, 0.99) range?**
+**Why [0.01, 0.99] range?**
 Unlike classification tasks where 0.0 and 1.0 are valid, 
 automated code graders cannot claim perfect certainty. 
 0.01 ensures the RL agent always receives gradient signal. 
@@ -333,7 +333,7 @@ principled partial-credit system inspired by real code review:
 - **0.01**: Floor signal — prevents zero reward, ensures RL 
   agent always gets gradient signal.
 
-The (0.01, 0.99) range is deliberately open — 0.0 would mean 
+The `[0.01, 0.99]` range is deliberately bounded — 0.0 would mean 
 "no information" and 1.0 would mean "perfect certainty", 
 neither of which is appropriate for automated graders.
 
@@ -361,15 +361,15 @@ The `Reward` model returned in `StepResponse` has three fields:
 
 ### Observation Cost
 
-Agents pay a real cost for using observation tools:
+Agents pay a real cost for using observation tools. Each observation action returns a flat `+0.01` reward (instead of an improvement delta), which is effectively a penalty since a useful `write_file` step would yield a much larger reward. Over multiple steps, the opportunity cost compounds:
 
-| Action | Reward | Cumulative Cost |
-|--------|--------|------------------|
-| `read_file` | +0.01 | -0.02 from total |
-| `list_files` | +0.01 | -0.02 from total |
-| `run_tests` | +0.01 | -0.02 from total |
-| `write_file` | improvement delta | none |
-| `submit` | improvement delta | none |
+| Action | Step Reward | vs. Useful Write |
+|--------|-------------|-----------------|
+| `read_file` | +0.01 | −opportunity cost |
+| `list_files` | +0.01 | −opportunity cost |
+| `run_tests` | +0.01 | −opportunity cost |
+| `write_file` | improvement delta | baseline |
+| `submit` | improvement delta | baseline |
 
 This creates genuine budget pressure — agents cannot 
 read every file and run tests freely. They must decide 
@@ -481,6 +481,7 @@ This opens the full terminal UI with:
 
 ### Example Usage
 
+```
 fix the authentication bug in auth.py
 
 → Orion classifies: bug_fix / medium complexity
@@ -489,6 +490,7 @@ fix the authentication bug in auth.py
 → Agent writes fix with asyncio.Lock
 → C09 validates: 5/5 clauses passing
 → Reward: 0.87 → bandit updates weights
+```
 
 ### TUI Keyboard Shortcuts
 
@@ -500,7 +502,7 @@ fix the authentication bug in auth.py
 | Ctrl+H | Session history |
 | Ctrl+C | Exit |
 
-### Difference: TUI vs OpenEnv Server
+### TUI vs OpenEnv Server
 
 | Mode | How to start | Use case |
 |------|-------------|----------|
@@ -637,6 +639,18 @@ orion-CLI/
 ├── server.py                  # Primary FastAPI app — all API endpoints
 └── verify_*.py                # Diagnostic / validation scripts
 ```
+
+## Contributing
+
+Issues and PRs are welcome! If you'd like to add new tasks, improve the grader scoring, or extend the RL architecture:
+
+1. Fork the repo and create a branch
+2. Add tests under `tests/` for any new graders
+3. Open a PR with a clear description of the change
+
+For questions or feedback, open a GitHub issue or reach out via the [HF Space](https://huggingface.co/spaces/YASHUUU8/OrionCLI).
+
+---
 
 ## License
 
