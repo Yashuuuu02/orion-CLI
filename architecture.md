@@ -35,14 +35,18 @@
 
 ## 1. Project Identity
 
-OrionCLI is a **dual-purpose** system:
+**OrionCLI is a command-line coding assistant** — an intelligent terminal interface that lets developers interact with LLMs through a tool-augmented agentic pipeline to read, write, edit, and search code directly from the terminal.
 
-| Role | Description |
+The CLI ships with an **embedded OpenEnv RL environment** as an integrated subsystem. This environment exposes the same core pipeline, tool system, and LLM provider that power the CLI, but packages them behind a standardised `reset()`/`step()` API for training and evaluating autonomous coding agents.
+
+| Layer | What It Is |
 |---|---|
-| **Agentic Coding Assistant** | A Textual-based terminal UI that lets developers interact with LLMs through a tool-augmented pipeline (read/write/edit/grep files) to perform coding tasks. |
-| **OpenEnv RL Environment** | A standardised environment exposing `reset()`/`step()` semantics — designed for training and evaluating autonomous coding agents on real-world bug-fixing and feature-implementation tasks. |
+| **Orion CLI** *(primary product)* | A Textual-based terminal UI (`summon-orion`) for interactive, human-in-the-loop coding with LLM assistance. Uses the pipeline engine, tools, RL bandit, and session management. |
+| **OpenEnv Environment** *(integrated component)* | An RL environment embedded within the CLI codebase. Reuses the same `orion/` library modules (provider, pipeline, RL, tools) but wraps them in a `reset()/step()` gym-style API, served over HTTP for agent evaluation. |
 
-The environment is built around **real-world failure modes** derived from production libraries (`tenacity`, `cachetools`, `pybreaker`, `asyncio`), making it a grounded benchmark rather than a synthetic toy.
+The OpenEnv component is built around **real-world failure modes** derived from production libraries (`tenacity`, `cachetools`, `pybreaker`, `asyncio`), making it a grounded benchmark rather than a synthetic toy.
+
+> **Key insight:** The OpenEnv environment is not a separate project — it is a subsystem of OrionCLI that exposes the CLI's internal capabilities as a programmatic API for autonomous agents.
 
 ---
 
@@ -154,9 +158,11 @@ orion-CLI/
 
 ## 4. Core Subsystems
 
+> **Note:** The subsystems below are all part of the OrionCLI codebase. The OpenEnv environment (§4.1) and FastAPI server (§4.2) are **components of the CLI project** that expose its internal pipeline and tooling as a programmatic API for agent evaluation. The CLI's own terminal UI (§4.10) consumes the same underlying modules.
+
 ### 4.1 OpenEnv Environment (`env.py`)
 
-The central class `OpenEnv` implements the standard **reset → step → done** RL loop.
+An **integrated component of OrionCLI** that wraps the CLI's core pipeline, tools, and RL subsystem into a standard `reset → step → done` RL loop for autonomous agent evaluation.
 
 #### State Management
 
@@ -216,7 +222,7 @@ A module-level `get_env(api_key)` function provides a cached singleton for modul
 
 ### 4.2 FastAPI Server (`server.py`)
 
-Wraps `OpenEnv` as a stateless HTTP service compliant with the OpenEnv specification.
+Wraps the CLI's embedded `OpenEnv` environment as a stateless HTTP service compliant with the OpenEnv specification. This is the deployment surface that external agents use to interact with OrionCLI's capabilities programmatically.
 
 #### Session Management
 
@@ -587,9 +593,9 @@ All tools operate on the **workspace** (either the user's CWD in TUI mode, or th
 
 ---
 
-### 4.10 Terminal UI (`orion/cli/`)
+### 4.10 Terminal UI (`orion/cli/`) — *The Primary Interface*
 
-Built with [Textual](https://textual.textualize.io/) for a rich terminal experience.
+The **core product surface** of OrionCLI. Built with [Textual](https://textual.textualize.io/) for a rich terminal experience, this is the interactive interface developers use day-to-day. It consumes the same pipeline engine, LLM provider, tool system, and RL bandit that the OpenEnv environment exposes programmatically.
 
 #### Entry Point
 
@@ -784,7 +790,7 @@ CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "7860"]
 
 ## 7. OpenEnv Compliance Contract
 
-OrionCLI conforms to the [OpenEnv specification](https://openenv.dev) as declared in `openenv.yaml`:
+The OpenEnv component embedded within OrionCLI conforms to the [OpenEnv specification](https://openenv.dev) as declared in `openenv.yaml`:
 
 | Requirement | Implementation |
 |---|---|
