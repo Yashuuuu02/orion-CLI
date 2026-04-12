@@ -359,6 +359,28 @@ The `Reward` model returned in `StepResponse` has three fields:
 | `efficiency` | `1.0 − (steps / budget)`, clamped `[0.01, 0.99]` |
 | `final_score` | The combined reward value for this step |
 
+### Observation Cost
+
+Agents pay a real cost for using observation tools:
+
+| Action | Reward | Cumulative Cost |
+|--------|--------|------------------|
+| `read_file` | +0.01 | -0.02 from total |
+| `list_files` | +0.01 | -0.02 from total |
+| `run_tests` | +0.01 | -0.02 from total |
+| `write_file` | improvement delta | none |
+| `submit` | improvement delta | none |
+
+This creates genuine budget pressure — agents cannot 
+read every file and run tests freely. They must decide 
+which observations are worth the cost, modeling how 
+production engineers triage bugs under time pressure.
+
+An agent that solves `fix_async_race` in 2 steps 
+(read → write → submit) scores higher than one that 
+takes 8 steps (list → read → run_tests × 5 → write → submit)
+even if both achieve the same final grader score.
+
 ---
 
 ## RL Architecture
@@ -499,7 +521,7 @@ The server maintains an `OrderedDict` of active sessions capped at `MAX_SESSIONS
 - [x] 6 golden trajectory tests (tests/test_graders.py)
 - [x] Bandit weights pre-seeded at Docker build time (200 episodes)
 - [x] Real library grounding (tenacity, cachetools, pybreaker)
-- [x] Step cost pressure on observation actions
+- [x] Observation cost pressure (-0.02 per read/list/test action)
 
 ---
 

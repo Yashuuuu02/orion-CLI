@@ -193,12 +193,10 @@ class OpenEnv:
         elif 'reward_val' not in locals():
             reward_val = 0.01
             
-        if action_type in ("view", "bash", "list_files"):
-            step_cost = -0.02
-        else:
-            step_cost = 0.0
-            
-        reward_val = max(0.01, reward_val + step_cost)
+        # Observation penalty: deduct from cumulative total_reward
+        # so agents pay a real cost for reading/listing/testing
+        if action_type in ("read_file", "list_files", "run_tests"):
+            self.state.total_reward = max(0.01, self.state.total_reward - 0.02)
         
         # Update state
         self.state.steps += 1
