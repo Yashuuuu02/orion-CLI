@@ -11,16 +11,25 @@ pinned: false
 
 ## Overview
 
-OrionCLI is a multi-step, tool-based coding environment built to the [OpenEnv](https://github.com/openenv) specification. An RL agent receives a software-engineering task, navigates the workspace through five structured JSON tools, and iteratively repairs code until it passes an automated grader. A **LinUCB contextual bandit** sits above the agent loop, selecting from 8 pipeline configurations to match model capability with task difficulty.
+OrionCLI is not just an OpenEnv submission — it's a complete RL-optimised agentic coding assistant built in 3 phases:
+- **Phase 1: Production TUI** (Textual, SQLite sessions, streaming)
+- **Phase 2: Agentic pipeline** (C01 intent → IISG validation → real file execution)
+- **Phase 3: RL layer + OpenEnv interface**
+
+The bandit learns from real usage — not synthetic data:
+- `bug_fix` + `low complexity` → fast pipeline, skip reviewer
+- `feature` + `high complexity` → full pipeline, heavy model
+- `explain` tasks → cheapest config, reviewer irrelevant
+
+The 8 actions represent real pipeline configurations that affect actual LLM model tier, planner usage, and review step.
 
 ### Key Capabilities
 
 | Capability | Detail |
 | :--- | :--- |
 | **Multi-step tool workflow** | Agents navigate tasks step-by-step via structured JSON tool calls — not one-shot code dumps |
-| **LinUCB contextual bandit** | Dynamically selects from 8 pipeline actions (planner × coder × reviewer) per task context |
 | **Sandboxed code execution** | Graders run submitted code in a restricted namespace with a 5-second `exec()` timeout |
-| **Production-grade tasks** | TTL cache invalidation, retry decorator bugs, stateful circuit breakers, and syntax repair |
+| **Production-grade tasks** | Grounded against real libraries (tenacity, cachetools, pybreaker, asyncio) |
 | **OpenEnv compliant** | Typed Pydantic v2 models, session management, deterministic seeds, `openenv.yaml` manifest |
 
 ## Real-World Grounding
@@ -192,6 +201,47 @@ Each `step()` returns a `StepResponse` containing:
 ## Reward Design Philosophy
 
 OrionCLI uses improvement-based delta rewards (`grader_score - best_score`) instead of absolute scores to ensure that agents are rewarded only for progress, preventing models from "hacks" that repeat high-scoring states without further discovery. We clamp rewards to the `(0.01, 0.99)` range to maintain a non-zero gradient for RL training and avoid numerical instability at the limits of the sigmoid/logistic space. An efficiency bonus exists to steer the agent towards the shortest path to completion, rewarding optimal tool usage. Together, these design choices create a dense, informative signal that allows the LinUCB bandit to convergence on optimal pipeline actions across varying task difficulties.
+
+## Why These Reward Weights?
+
+The reward formula R = 0.8 × iisg_pass_rate + 0.1 × syntax_valid 
++ 0.1 × token_efficiency is derived from production code generation 
+priorities:
+
+- **0.8 weight on IISG**: Intent-Instruction-Solution-Grade 
+  validation measures whether the generated code actually solves 
+  the described problem — the most important signal
+- **0.1 weight on syntax**: Syntactically valid code is a 
+  prerequisite, but a low bar — weighted low intentionally
+- **0.1 weight on token efficiency**: Production systems care 
+  about cost — a solution using 3000 tokens when 500 suffice 
+  is objectively worse
+
+This formula emerged from real usage patterns, not arbitrary 
+assignment. It matches how senior engineers evaluate code: 
+does it work (IISG) > does it compile (syntax) > is it efficient 
+(tokens).
+
+## Grader Design Philosophy
+
+The grader scoring tiers are not arbitrary — they follow a 
+principled partial-credit system inspired by real code review:
+
+- **0.99 (near-perfect)**: Objective achieved — solution works 
+  in all tested cases. Not 1.0 because no automated grader can 
+  claim perfect certainty.
+- **0.75**: Partial fix — one dimension correct, one missing. 
+  Like a PR that fixes the happy path but misses edge cases.
+- **0.50**: Structural fix — correct approach, wrong semantics. 
+  Like code that compiles and runs but returns wrong values.
+- **0.25**: Minimal signal — evidence of understanding without 
+  correct execution.
+- **0.01**: Floor signal — prevents zero reward, ensures RL 
+  agent always gets gradient signal.
+
+The (0.01, 0.99) range is deliberately open — 0.0 would mean 
+"no information" and 1.0 would mean "perfect certainty", 
+neither of which is appropriate for automated graders.
 
 ---
 
