@@ -16,6 +16,8 @@ OrionCLI is not just an OpenEnv submission — it's a complete RL-optimised agen
 - **Phase 2: Agentic pipeline** (C01 intent → IISG validation → real file execution)
 - **Phase 3: RL layer + OpenEnv interface**
 
+Each `/step` call runs the complete Phase 2 agentic pipeline internally — intent classification, multi-model agentic loop, real file execution, and IISG validation — not a single LLM call.
+
 The bandit learns from real usage — not synthetic data:
 - `bug_fix` + `low complexity` → fast pipeline, skip reviewer
 - `feature` + `high complexity` → full pipeline, heavy model
