@@ -17,6 +17,8 @@ pinned: false
 
 *Built for the Meta × Hugging Face OpenEnv Hackathon*
 
+> 🔴 **Live Dashboard:** View real-time episode data and RL bandit stats at [/dashboard](https://yashuuu8-orioncli.hf.space/dashboard)
+
 ## Overview
 
 OrionCLI is not just an OpenEnv submission — it's a complete RL-optimised agentic coding assistant built in 3 phases:
