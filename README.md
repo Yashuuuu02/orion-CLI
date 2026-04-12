@@ -435,6 +435,84 @@ even if both achieve the same final grader score.
 
 ---
 
+## Using OrionCLI as a Coding Assistant
+
+OrionCLI ships with a production terminal UI for interactive 
+coding assistance. The OpenEnv server is an embedded component — 
+the full system is a complete agentic coding assistant.
+
+### Install
+
+```bash
+git clone https://github.com/Yashuuuu02/orion-CLI
+cd orion-CLI
+pip install -e .
+```
+
+### Configure
+
+Create `~/.orion/config.toml`:
+
+```toml
+[orion]
+nim_api_key = "your-nvidia-nim-key"
+default_model = "qwen2.5-coder-32b"
+theme = "dark"
+```
+
+Or set environment variable:
+```bash
+export NVIDIA_NIM_API_KEY="your-key"
+```
+
+### Launch the TUI
+
+```bash
+summon-orion
+```
+
+This opens the full terminal UI with:
+- Chat interface for coding tasks
+- Live token streaming
+- IISG validation on every write
+- RL bandit routing (learns over time)
+- Session history (Ctrl+H)
+- New session (Ctrl+N)
+
+### Example Usage
+
+fix the authentication bug in auth.py
+
+→ Orion classifies: bug_fix / medium complexity
+→ Bandit selects: balanced-coder-with-review
+→ Agent reads auth.py, identifies the issue
+→ Agent writes fix with asyncio.Lock
+→ C09 validates: 5/5 clauses passing
+→ Reward: 0.87 → bandit updates weights
+
+### TUI Keyboard Shortcuts
+
+| Key | Action |
+|-----|--------|
+| Enter | Submit prompt |
+| Shift+Enter | New line |
+| Ctrl+N | New session |
+| Ctrl+H | Session history |
+| Ctrl+C | Exit |
+
+### Difference: TUI vs OpenEnv Server
+
+| Mode | How to start | Use case |
+|------|-------------|----------|
+| TUI | `summon-orion` | Interactive coding assistant |
+| OpenEnv Server | `python server.py` | Agent training & evaluation |
+| Inference Script | `python inference.py` | Automated baseline evaluation |
+
+Both modes use the same underlying pipeline — the OpenEnv 
+server exposes the TUI's pipeline via HTTP for agent training.
+
+---
+
 ## Setup & Usage
 
 ### Environment Variables
