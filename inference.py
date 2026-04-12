@@ -85,9 +85,10 @@ async def main():
                     task_name = state.get("task_name", task_name)
                     task_prompt = state.get("task_prompt", "")
 
-                    for i in range(1, MAX_STEPS + 1):
-                        messages = [
-                            {"role": "system", "content": """You are a coding agent. You must respond 
+                    # Build persistent conversation so agent remembers previous steps
+                    import json
+                    conversation = [
+                        {"role": "system", "content": """You are a coding agent. You must respond 
 with ONLY a valid JSON action object. Available actions:
 
 {"action_type": "list_files"}
@@ -100,21 +101,21 @@ Strategy: First list_files, then read_file to see the bug,
 then write_file with your fix, then submit.
 
 Respond with ONLY the JSON object, no explanation."""},
-                            {"role": "user", "content": task_prompt},
-                        ]
+                        {"role": "user", "content": task_prompt},
+                    ]
 
+                    for i in range(1, MAX_STEPS + 1):
                         error = None
                         try:
-                            action_text = call_llm(client, messages)
+                            action_text = call_llm(client, conversation)
                         except Exception as e:
                             action_text = ""
                             error = str(e)
 
                         # Parse LLM response as JSON action
                         try:
-                            import json
                             action = json.loads(action_text)
-                        except json.JSONDecodeError:
+                        except (json.JSONDecodeError, ValueError):
                             # fallback: treat as write_file to main task file
                             action = {
                                 "action_type": "write_file",
@@ -151,6 +152,11 @@ Respond with ONLY the JSON object, no explanation."""},
                                 reward = 0.01
                                 done = True
                                 error = str(e)
+
+                        # Append assistant action + tool result to conversation history
+                        conversation.append({"role": "assistant", "content": json.dumps(action)})
+                        tool_result_text = step_result.tool_response.result[:500] if hasattr(step_result, 'tool_response') and step_result.tool_response else ""
+                        conversation.append({"role": "user", "content": f"Tool result: {tool_result_text}\nCurrent score: {reward:.2f}\nBest score: {step_result.observation.best_score:.2f}\nContinue solving the task."})
 
                         # Update bandit with real episode reward
                         try:

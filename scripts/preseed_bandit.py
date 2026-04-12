@@ -8,9 +8,10 @@ def preseed_bandit():
     encoder = StateEncoder()
     
     tasks = [
-        {"name": "debug_memory_leak", "intent": "bug_fix", "complexity": "medium"},
-        {"name": "fix_retry_logic", "intent": "bug_fix", "complexity": "high"},
-        {"name": "implement_circuit_breaker", "intent": "feature", "complexity": "high"},
+        {"name": "fix_tenacity_retry", "intent": "bug_fix", "complexity": "medium"},
+        {"name": "fix_cachetools_ttl", "intent": "bug_fix", "complexity": "medium"},
+        {"name": "implement_pybreaker", "intent": "feature", "complexity": "high"},
+        {"name": "fix_async_race", "intent": "bug_fix", "complexity": "high"},
     ]
     
     for _ in range(100):
@@ -36,7 +37,7 @@ def preseed_bandit():
         is_heavy = "heavy" in action_name
         has_review = "with-review" in action_name or "balanced-review" in action_name
         
-        if task["name"] == "debug_memory_leak":
+        if task["name"] == "fix_tenacity_retry":
             if is_fast:
                 reward = random.uniform(0.4, 0.6)
             elif is_balanced and has_review:
@@ -44,21 +45,29 @@ def preseed_bandit():
             else:
                 reward = random.uniform(0.5, 0.7)
                 
-        elif task["name"] == "fix_retry_logic":
+        elif task["name"] == "fix_cachetools_ttl":
             if is_fast:
-                reward = random.uniform(0.3, 0.5)
-            elif is_heavy and has_review:
-                reward = random.uniform(0.7, 0.95)
+                reward = random.uniform(0.4, 0.6)
+            elif is_balanced and has_review:
+                reward = random.uniform(0.7, 0.9)
             else:
-                reward = random.uniform(0.4, 0.7)
+                reward = random.uniform(0.5, 0.7)
                 
-        elif task["name"] == "implement_circuit_breaker":
+        elif task["name"] == "implement_pybreaker":
             if is_fast:
                 reward = random.uniform(0.2, 0.4)
             elif is_balanced or is_heavy:
                 reward = random.uniform(0.6, 0.9)
             else:
                 reward = random.uniform(0.3, 0.6)
+                
+        elif task["name"] == "fix_async_race":
+            if is_fast:
+                reward = random.uniform(0.3, 0.5)
+            elif is_heavy and has_review:
+                reward = random.uniform(0.7, 0.95)
+            else:
+                reward = random.uniform(0.4, 0.7)
                 
         # Update bandit
         bandit.update(state_list, action_idx, reward)
