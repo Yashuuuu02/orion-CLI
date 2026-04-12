@@ -345,17 +345,7 @@ The embedded OpenEnv component conforms strictly to the [OpenEnv specification](
 
 Each module must follow strict test verification protocols:
 
-### 10.1 Phase 2 Prompt Chain
-1. **P2-1 Tools:** `tools.py`. Test write/read/edit/grep.
-2. **P2-2 Provider:** `provider.py`. Test NIM API connectivity.
-3. **P2-3 Models:** `models.py`. Ensure pure dataclasses format well.
-4. **P2-4 C01 Intent:** `c01_intent.py`. Run against sample issues.
-5. **P2-5 C09 Val:** `c09_validation.py`. Validate sandbox detections.
-6. **P2-6 Context:** `context.py`. Ensure token sliding reduction happens.
-7. **P2-7 Loop:** `agentic_loop.py`. Test tool orchestration.
-8. **P2-8 Runner:** Trigger full UI.
-
-### 10.2 Phase 3 Build Order
+### Deployment Build Order
 - P3-1 State encoder ➔ P3-2 Bandit ➔ P3-3 Task Bank ➔ P3-4 Env wrapper ➔ P3-5 Inference script ➔ P3-6 openenv.yaml ➔ P3-7 Dockerfile ➔ P3-8 Runner Wiring ➔ P3-9 Launch.
 
 *(Windows Note: Execute tests as scripts, avoid PowerShell `cmd /c set` or trailing quote misinterpretations).*
