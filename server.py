@@ -217,9 +217,10 @@ async def rl_stats():
             ACTION_NAMES[a]: bandit.counts.get(a, 0) for a in range(bandit.n_actions)
         },
         "best_action_per_task": {
-            "debug_memory_leak": _best_action("bug_fix", "medium"),
-            "fix_retry_logic": _best_action("bug_fix", "high"),
-            "implement_circuit_breaker": _best_action("feature", "high")
+            "fix_tenacity_retry": _best_action("bug_fix", "medium"),
+            "fix_cachetools_ttl": _best_action("bug_fix", "medium"),
+            "implement_pybreaker": _best_action("feature", "high"),
+            "fix_async_race": _best_action("bug_fix", "high")
         },
         "exploration_alpha": bandit.alpha,
         "weights_shape": [bandit.n_actions, bandit.n_features]

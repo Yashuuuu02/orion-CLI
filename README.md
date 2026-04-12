@@ -71,20 +71,7 @@ production Python libraries:
 This grounds the environment in real failure modes that 
 production agents would actually encounter.
 
-## 📊 Baseline Scores
 
-| Task | Difficulty | Zero-Shot Score | Optimal Score | Gap (training signal) |
-|------|-----------|----------------|---------------|----------------------|
-| fix_tenacity_retry | Medium | ~0.50 | 0.99 | 0.49 |
-| fix_cachetools_ttl | Medium | ~0.50 | 0.99 | 0.49 |
-| implement_pybreaker | Hard | ~0.40 | 0.99 | 0.59 |
-| fix_async_race | Hard | ~0.25 | 0.99 | 0.74 |
-
-The gap between zero-shot and optimal IS the training signal. 
-Tasks where frontier models consistently fail are where RL 
-provides the most value.
-
----
 
 ## How Episodes Work
 
@@ -243,6 +230,30 @@ Each `step()` returns a `StepResponse` containing:
 > is non-obvious. Most agents add a Lock but put it in the wrong 
 > place. The run_tests tool lets agents verify their fix actually 
 > prevents the race before submitting.
+
+---
+
+## 📊 Baseline Scores
+
+Measured from inference.py first-attempt results using 
+`nvidia_nim/qwen/qwen2.5-coder-32b-instruct`:
+
+| Task | Difficulty | Zero-Shot Score | Optimal Score | Training Gap |
+|------|-----------|----------------|---------------|--------------|
+| `fix_tenacity_retry` | Medium | 0.25 | 0.99 | **0.74** |
+| `fix_cachetools_ttl` | Medium | 0.25 | 0.99 | **0.74** |
+| `implement_pybreaker` | Hard | 0.20 | 0.99 | **0.79** |
+| `fix_async_race` | Hard | 0.50 | 0.99 | **0.49** |
+
+> **Training gap** = how much room exists for RL improvement.
+> A zero-shot score of 0.20 on `implement_pybreaker` means 
+> the agent gets the class structure right but misses the 
+> state machine transitions — exactly the multi-step reasoning 
+> that RL training improves.
+> 
+> `fix_async_race` scores highest zero-shot (0.50) because 
+> agents recognize Lock patterns but often miss that 
+> `asyncio.sleep(0)` is the yield point causing the race.
 
 ---
 

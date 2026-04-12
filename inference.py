@@ -87,22 +87,19 @@ async def main():
 
                     for i in range(1, MAX_STEPS + 1):
                         messages = [
-                            {"role": "system", "content": """You are a coding agent with these tools:
-- read_file: {"action_type": "read_file", "path": "filename.py"}
-- write_file: {"action_type": "write_file", "path": "file.py", "content": "..."}
-- run_tests: {"action_type": "run_tests"}
-- list_files: {"action_type": "list_files"}
-- submit: {"action_type": "submit", "explanation": "what I fixed"}
+                            {"role": "system", "content": """You are a coding agent. You must respond 
+with ONLY a valid JSON action object. Available actions:
 
-Strategy:
-1. First call list_files to see what's in the workspace
-2. Call read_file on the target file to understand the bug
-3. Call write_file with your fix
-4. Call run_tests to verify
-5. Call submit when score >= 0.95
+{"action_type": "list_files"}
+{"action_type": "read_file", "path": "filename.py"}  
+{"action_type": "write_file", "path": "filename.py", "content": "...code..."}
+{"action_type": "run_tests"}
+{"action_type": "submit", "explanation": "what I fixed"}
 
-Respond with ONLY a valid JSON object matching one action.
-No explanation, no markdown, just the JSON."""},
+Strategy: First list_files, then read_file to see the bug,
+then write_file with your fix, then submit.
+
+Respond with ONLY the JSON object, no explanation."""},
                             {"role": "user", "content": task_prompt},
                         ]
 
@@ -129,10 +126,31 @@ No explanation, no markdown, just the JSON."""},
                             step_result = await env.step(action)
                             reward = step_result.reward.final_score
                             done = step_result.done
+                            
+                            # Checks if step returned an error string containing 404
+                            if step_result.tool_response and step_result.tool_response.success is False and "404" in str(step_result.tool_response.result):
+                                raise Exception(step_result.tool_response.result)
+
                         except Exception as e:
-                            reward = 0.01
-                            done = True
-                            error = str(e)
+                            if "404" in str(e):
+                                action = {
+                                    "action_type": "write_file",
+                                    "path": "solution.py",
+                                    "content": action_text
+                                }
+                                try:
+                                    step_result = await env.step(action)
+                                    reward = step_result.reward.final_score
+                                    done = step_result.done
+                                    error = None
+                                except Exception as fallback_e:
+                                    reward = 0.01
+                                    done = True
+                                    error = str(fallback_e)
+                            else:
+                                reward = 0.01
+                                done = True
+                                error = str(e)
 
                         # Update bandit with real episode reward
                         try:
