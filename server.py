@@ -14,7 +14,7 @@ from collections import OrderedDict
 from typing import Optional
 
 from fastapi import FastAPI
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, HTMLResponse
 from pydantic import BaseModel
 
 from env import OpenEnv
@@ -225,6 +225,249 @@ async def rl_stats():
         "exploration_alpha": bandit.alpha,
         "weights_shape": [bandit.n_actions, bandit.n_features]
     }
+
+HTML_CONTENT = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OrionCLI Dashboard</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
+  body {
+    background-color: #0d1117;
+    color: #e6edf3;
+    font-family: 'JetBrains Mono', monospace;
+    margin: 0;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    box-sizing: border-box;
+  }
+  h1, h2, h3 { color: #58a6ff; margin-top: 0; }
+  .accent { color: #00ff88; }
+  .container {
+    display: flex;
+    flex: 1;
+    gap: 20px;
+    min-height: 0;
+  }
+  .panel {
+    background-color: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+  }
+  .left-panel { flex: 1; }
+  .right-panel { flex: 1; }
+  .bottom-panel {
+    flex: 1;
+    margin-top: 20px;
+  }
+  .badge {
+    display: inline-block;
+    padding: 4px 8px;
+    border-radius: 4px;
+    background-color: #238636;
+    color: #ffffff;
+    font-size: 0.8em;
+    font-weight: bold;
+  }
+  .progress-bg {
+    background-color: #21262d;
+    border-radius: 4px;
+    height: 20px;
+    width: 100%;
+    margin-top: 5px;
+  }
+  .progress-bar {
+    background-color: #00ff88;
+    height: 100%;
+    border-radius: 4px;
+    width: 0%;
+    transition: width 0.3s;
+  }
+  .data-row {
+    display: flex;
+    justify-content: space-between;
+    margin: 10px 0;
+    border-bottom: 1px solid #30363d;
+    padding-bottom: 5px;
+  }
+  .log-entry { margin: 5px 0; font-size: 0.9em; }
+  .sparkline { display: flex; align-items: flex-end; height: 40px; gap: 2px; margin-top: 10px; }
+  .spark-bar { width: 10px; background-color: #00ff88; transition: height 0.3s; }
+  .bar-row { display: flex; align-items: center; margin: 5px 0; }
+  .bar-label { width: 250px; font-size: 0.8em; }
+  .bar-value { background-color: #58a6ff; height: 15px; margin-right: 10px; transition: width 0.3s; min-width: 2px; }
+  .bar-number { font-size: 0.8em; }
+  .waiting { text-align: center; color: #8b949e; margin-top: 50px; font-style: italic; }
+  #log-container { overflow-y: auto; max-height: 100%; }
+</style>
+</head>
+<body>
+
+<div id="content" style="display:none; height:100%; width:100%; flex-direction:column;">
+  <div class="container">
+    <div class="panel left-panel">
+      <h2>🚀 Current Episode</h2>
+      <div id="task-info"></div>
+      
+      <div style="margin-top:20px;">
+        <div>Steps: <span id="steps-text"></span></div>
+        <div class="progress-bg"><div id="progress-bar" class="progress-bar"></div></div>
+      </div>
+      
+      <div style="margin-top:20px;">
+        <div>Best Score:</div>
+        <div id="best-score" class="accent" style="font-size: 2.5em; font-weight: bold;">0.00</div>
+      </div>
+      
+      <div style="margin-top:20px;">
+        <div>Last Tool Call:</div>
+        <pre id="last-tool" style="background:#0d1117; padding:10px; border-radius:4px; max-height:100px; overflow-y:auto; font-size:0.8em; border:1px solid #30363d;">-</pre>
+      </div>
+
+      <div style="margin-top:20px;">
+        <div>Reward History (last 10)</div>
+        <div class="sparkline" id="sparkline"></div>
+      </div>
+    </div>
+    
+    <div class="panel right-panel">
+      <h2>🤖 RL Bandit Stats</h2>
+      <div class="data-row"><span>Algorithm:</span><span id="algo-name" class="accent">-</span></div>
+      <div class="data-row"><span>Total Episodes:</span><span id="total-episodes" class="accent">-</span></div>
+      <div class="data-row"><span>Exploration α:</span><span id="alpha-val" class="accent">-</span></div>
+      
+      <h3 style="margin-top:20px;">Best Action per Task</h3>
+      <div id="best-actions" style="font-size:0.9em; margin-bottom:20px;"></div>
+      
+      <h3 style="margin-top:20px;">Action Distribution</h3>
+      <div id="action-dist"></div>
+    </div>
+  </div>
+  
+  <div class="panel bottom-panel">
+    <h2>📋 Live Log</h2>
+    <div id="log-container"></div>
+  </div>
+</div>
+
+<div id="waiting" class="waiting">
+  <h2>Waiting for episode...</h2>
+  <p>No active sessions found. Run inference.py to start an episode.</p>
+</div>
+
+<script>
+async function fetchData() {
+  try {
+    const rlRes = await fetch('/rl/stats');
+    if (rlRes.ok) {
+      const rlData = await rlRes.json();
+      document.getElementById('algo-name').innerText = rlData.algorithm || '-';
+      document.getElementById('total-episodes').innerText = rlData.total_episodes || '0';
+      document.getElementById('alpha-val').innerText = rlData.exploration_alpha || '-';
+      
+      let bestHtml = '';
+      for (const [task, act] of Object.entries(rlData.best_action_per_task || {})) {
+        bestHtml += `<div style="margin:5px 0;"><strong>${task}</strong>: <span class="accent">${act}</span></div>`;
+      }
+      document.getElementById('best-actions').innerHTML = bestHtml;
+      
+      let distHtml = '';
+      const counts = rlData.action_counts || {};
+      const maxCount = Math.max(...Object.values(counts), 1);
+      for (const [act, count] of Object.entries(counts)) {
+        const w = (count / maxCount) * 100;
+        distHtml += `
+          <div class="bar-row">
+            <div class="bar-label">${act}</div>
+            <div class="bar-value" style="width: ${w * 0.6}%"></div>
+            <div class="bar-number">${count}</div>
+          </div>
+        `;
+      }
+      document.getElementById('action-dist').innerHTML = distHtml;
+    }
+    
+    const stateRes = await fetch('/state');
+    if (stateRes.ok) {
+        const state = await stateRes.json();
+        if (state.error) {
+            showWaiting();
+            return;
+        }
+        showContent();
+        
+        document.getElementById('task-info').innerHTML = `
+          <span style="font-weight:bold; font-size:1.2em;">${state.task_name || 'Tasks'}</span> 
+          <span class="badge" style="margin-left:10px;">${state.task_difficulty || 'Unknown'}</span>
+        `;
+        
+        const steps = state.steps || 0;
+        const budget = 30; // approx max budget
+        document.getElementById('steps-text').innerText = steps;
+        document.getElementById('progress-bar').style.width = Math.min((steps/budget)*100, 100) + '%';
+        
+        const best = parseFloat(state.best_score || 0).toFixed(2);
+        document.getElementById('best-score').innerText = best;
+        
+        const hist = state.history || [];
+        if (hist.length > 0) {
+            const last = hist[hist.length - 1];
+            document.getElementById('last-tool').innerText = `[${last.action_type}]\\n${last.tool_result ? last.tool_result.substring(0, 200) : ''}`;
+        }
+        
+        let sparkHtml = '';
+        const recentHist = hist.slice(-10);
+        for (const h of recentHist) {
+            const h2 = Math.max(2, (h.reward * 40)) + 'px';
+            const val = parseFloat(h.reward).toFixed(2);
+            sparkHtml += `<div class="spark-bar" style="height:${h2}" title="${val}"></div>`;
+        }
+        document.getElementById('sparkline').innerHTML = sparkHtml;
+        
+        let logHtml = '';
+        const logHist = hist.slice(-5).reverse();
+        for (const h of logHist) {
+            const val = parseFloat(h.reward).toFixed(2);
+            logHtml += `<div class="log-entry"><span style="color:#58a6ff;">Step ${h.step}</span> | Action: <span class="accent">${h.action_type}</span> | Reward: ${val}</div>`;
+        }
+        document.getElementById('log-container').innerHTML = logHtml;
+    } else {
+        showWaiting();
+    }
+  } catch(e) {
+    console.error(e);
+  }
+}
+
+function showWaiting() {
+    document.getElementById('waiting').style.display = 'block';
+    document.getElementById('content').style.display = 'none';
+}
+
+function showContent() {
+    document.getElementById('waiting').style.display = 'none';
+    document.getElementById('content').style.display = 'flex';
+}
+
+fetchData();
+setInterval(fetchData, 3000);
+</script>
+</body>
+</html>
+"""
+
+@app.get("/dashboard", response_class=HTMLResponse)
+async def dashboard():
+    return HTMLResponse(content=HTML_CONTENT)
 
 # ---------------------------------------------------------------------------
 # Entry-point
